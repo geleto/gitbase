@@ -235,11 +235,19 @@ export class TaskChangesProvider implements vscode.Disposable {
     const ok = await gitOrNull(root, 'rev-parse', '--verify', ref)
     if (!ok) {
       this.group.resourceStates = []
-      const action = await vscode.window.showWarningMessage(
-        `Task Changes: base ref "${ref}" no longer exists.`,
+      this.baseRef   = 'HEAD'
+      this.baseLabel = 'HEAD'
+      this.baseType  = 'Task'
+      await this.ctx.workspaceState.update(`taskChanges.base.${root}`,      undefined)
+      await this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, undefined)
+      await this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  undefined)
+      this.syncLabel()
+      vscode.window.showWarningMessage(
+        `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
         'Select Base',
-      )
-      if (action === 'Select Base') vscode.commands.executeCommand('taskChanges.selectBase', this.scm)
+      ).then(action => {
+        if (action === 'Select Base') vscode.commands.executeCommand('taskChanges.selectBase', this.scm)
+      })
       return
     }
 
