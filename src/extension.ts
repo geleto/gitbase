@@ -63,7 +63,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.running = true; this.dirty = false
     try { await this.run() } finally {
       this.running = false
-      if (this.dirty) this.refresh()
+      if (this.dirty) this.schedule()
     }
   }
 
