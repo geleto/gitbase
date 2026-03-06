@@ -199,7 +199,7 @@ class TaskChangesDecorationProvider implements vscode.FileDecorationProvider, vs
       }
 
       // Explorer decoration: plain file URI, skipped when git already decorates it.
-      if (!dirtyPaths.has(c.path)) {
+      if (!WORKAROUND_DOUBLE_BADGE || !dirtyPaths.has(c.path)) {
         const fileKey = fileUri.toString()
         next.set(fileKey, fileUri)
         this.decos.set(fileKey, deco)
@@ -254,7 +254,25 @@ class TaskChangesDecorationProvider implements vscode.FileDecorationProvider, vs
 const WORKAROUND_URI_FRAGMENT = true
 
 /**
- * WORKAROUND B: VS Code stale SCM context keys.
+ * WORKAROUND B: Explorer double-badge when a file appears in both panels.
+ *
+ * VS Code stacks FileDecoration badges from all registered providers for the
+ * same URI.  A file that is modified in the working tree (and therefore also
+ * decorated by the git extension under its plain `file:` URI) would receive
+ * two overlapping badges — e.g. "M, M" — in the Explorer.
+ *
+ * Fix: skip registering the plain-URI FileDecoration for files that are
+ * already dirty relative to HEAD (i.e. files the git extension will decorate).
+ * GitBase's SCM-panel badge is unaffected because it uses the `#gitbase`
+ * fragment URI (WORKAROUND_URI_FRAGMENT) which the git extension never touches.
+ *
+ * Set to `false` to always register the plain-URI decoration (causes double
+ * badges in the Explorer for files in both panels).
+ */
+const WORKAROUND_DOUBLE_BADGE = true
+
+/**
+ * WORKAROUND C: VS Code stale SCM context keys.
  *
  * VS Code does not always flush `scmProvider` / `scmResourceGroup` context
  * keys when focus moves between SCM providers.  Workaround A above is the
