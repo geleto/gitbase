@@ -36,6 +36,12 @@ function isSha(ref: string): boolean {
   return /^[0-9a-f]{40}$/i.test(ref)
 }
 
+async function detectRefType(root: string, ref: string): Promise<'Branch' | 'Tag' | 'Commit'> {
+  if (await gitOrNull(root, 'show-ref', '--verify', `refs/heads/${ref}`)) return 'Branch'
+  if (await gitOrNull(root, 'show-ref', '--verify', `refs/tags/${ref}`))  return 'Tag'
+  return 'Commit'
+}
+
 // ── Parsing ───────────────────────────────────────────────────────────────────
 
 interface RawChange { status: string; path: string; oldPath?: string }
@@ -169,6 +175,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 
   private baseRef   = 'HEAD'
   private baseLabel = 'HEAD'
+  private baseType  = 'Task'
   private running = false
   private dirty   = false
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -179,18 +186,18 @@ export class TaskChangesProvider implements vscode.Disposable {
     private readonly content: BaseGitContentProvider,
   ) {
     const root = repo.rootUri.fsPath
-    const name = nodePath.basename(root)
 
-    this.scm = vscode.scm.createSourceControl('taskchanges', `Task Changes (${name})`, repo.rootUri)
+    this.scm = vscode.scm.createSourceControl('taskchanges', 'GitBase Changes', repo.rootUri)
     this.scm.inputBox.visible = false
 
-    this.group = this.scm.createResourceGroup('changes', 'Since HEAD')
+    this.group = this.scm.createResourceGroup('changes', 'HEAD · Select a base to begin')
     this.group.hideWhenEmpty = false
 
     const stored = ctx.workspaceState.get<string>(`taskChanges.base.${root}`)
     if (stored) {
       this.baseRef   = stored
       this.baseLabel = ctx.workspaceState.get<string>(`taskChanges.baseLabel.${root}`) ?? stored
+      this.baseType  = ctx.workspaceState.get<string>(`taskChanges.baseType.${root}`) ?? 'Task'
       this.syncLabel()
     }
 
@@ -200,8 +207,10 @@ export class TaskChangesProvider implements vscode.Disposable {
 
   private syncLabel(): void {
     this.group.label = this.baseLabel === 'HEAD'
-      ? 'Since HEAD (select a base to begin)'
-      : `Since ${this.baseLabel}`
+      ? 'HEAD · Select a base to begin'
+      : this.baseType === 'Task'
+        ? this.baseLabel
+        : `${this.baseType} · ${this.baseLabel}`
   }
 
   schedule(): void {
@@ -345,9 +354,14 @@ export class TaskChangesProvider implements vscode.Disposable {
     // Enter ref: store as typed (SHA → frozen, branch name → tracks tip).
     this.baseRef   = (typeItem === 'Branch…' || typeItem === 'Enter ref…') ? newRef : resolved
     this.baseLabel = newLabel ?? newRef   // commits use subject; everything else uses the ref name
+    this.baseType  = typeItem === 'Branch…' ? 'Branch'
+                   : typeItem === 'Tag…'    ? 'Tag'
+                   : typeItem === 'Commit…' ? 'Commit'
+                   : await detectRefType(root, newRef)
 
     await this.ctx.workspaceState.update(`taskChanges.base.${root}`,      this.baseRef)
     await this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, this.baseLabel)
+    await this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  this.baseType)
     this.syncLabel()
     this.schedule()
   }
