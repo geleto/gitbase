@@ -167,7 +167,8 @@ export class TaskChangesProvider implements vscode.Disposable {
   private readonly group: vscode.SourceControlResourceGroup
   private readonly subs: vscode.Disposable[] = []
 
-  private baseRef = 'HEAD'
+  private baseRef   = 'HEAD'
+  private baseLabel = 'HEAD'
   private running = false
   private dirty   = false
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -187,16 +188,20 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.group.hideWhenEmpty = false
 
     const stored = ctx.workspaceState.get<string>(`taskChanges.base.${root}`)
-    if (stored) { this.baseRef = stored; this.syncLabel() }
+    if (stored) {
+      this.baseRef   = stored
+      this.baseLabel = ctx.workspaceState.get<string>(`taskChanges.baseLabel.${root}`) ?? stored
+      this.syncLabel()
+    }
 
     this.subs.push(repo.state.onDidChange(() => this.schedule()))
     this.schedule()
   }
 
   private syncLabel(): void {
-    this.group.label = this.baseRef === 'HEAD'
+    this.group.label = this.baseLabel === 'HEAD'
       ? 'Since HEAD (select a base to begin)'
-      : `Since ${this.baseRef}`
+      : `Since ${this.baseLabel}`
   }
 
   schedule(): void {
@@ -243,11 +248,11 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     this.group.resourceStates = changes.map(c => {
       const isBin = binary.has(c.path) || (c.oldPath ? binary.has(c.oldPath) : false)
-      return this.makeState(root, ref, c, isBin)
+      return this.makeState(root, ref, this.baseLabel, c, isBin)
     })
   }
 
-  private makeState(root: string, ref: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
+  private makeState(root: string, ref: string, label: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
     const workUri = vscode.Uri.file(nodePath.join(root, c.path))
     const { status } = c
 
@@ -268,7 +273,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     }
 
     const d = DECO[status] ?? DECO['M']
-    const diffTitle = `${nodePath.basename(c.path)} (since ${ref})`
+    const diffTitle = `${nodePath.basename(c.path)} (since ${label})`
 
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
@@ -295,7 +300,8 @@ export class TaskChangesProvider implements vscode.Disposable {
     )
     if (!typeItem) return
 
-    let newRef: string | undefined
+    let newRef:   string | undefined
+    let newLabel: string | undefined   // human-readable display name; defaults to newRef
 
     if (typeItem === 'Branch…') {
       const out   = await gitOrNull(root, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/', 'refs/remotes/')
@@ -316,11 +322,11 @@ export class TaskChangesProvider implements vscode.Disposable {
         .filter(Boolean)
         .map(line => {
           const [sha, subject, date] = line.split('\x1f')
-          return { label: sha.slice(0, 8), description: subject, detail: date, sha }
+          return { label: subject, description: `${sha.slice(0, 8)} · ${date}`, sha }
         })
 
       const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select commit…', matchOnDescription: true })
-      if (picked) newRef = picked.sha   // full 40-char SHA → isSha() → permanent cache
+      if (picked) { newRef = picked.sha; newLabel = picked.label }   // label = subject
 
     } else {
       newRef = await vscode.window.showInputBox({ prompt: 'Enter a branch name, tag, or SHA' })
@@ -337,9 +343,11 @@ export class TaskChangesProvider implements vscode.Disposable {
     // Branches: store symbolic name so the diff tracks tip movement.
     // Tags & commits: store the full SHA so the diff is frozen.
     // Enter ref: store as typed (SHA → frozen, branch name → tracks tip).
-    this.baseRef = (typeItem === 'Branch…' || typeItem === 'Enter ref…') ? newRef : resolved
+    this.baseRef   = (typeItem === 'Branch…' || typeItem === 'Enter ref…') ? newRef : resolved
+    this.baseLabel = newLabel ?? newRef   // commits use subject; everything else uses the ref name
 
-    await this.ctx.workspaceState.update(`taskChanges.base.${root}`, this.baseRef)
+    await this.ctx.workspaceState.update(`taskChanges.base.${root}`,      this.baseRef)
+    await this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, this.baseLabel)
     this.syncLabel()
     this.schedule()
   }
