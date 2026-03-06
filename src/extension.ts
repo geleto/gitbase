@@ -266,18 +266,24 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   )
 
   // When called from the scm/title menu, VS Code passes the SourceControl as first arg.
-  function resolveProvider(sc?: vscode.SourceControl): TaskChangesProvider | undefined {
+  // When invoked from the command palette with multiple repos open, ask the user to pick.
+  async function resolveProvider(sc?: vscode.SourceControl): Promise<TaskChangesProvider | undefined> {
     if (sc) return [...providers.values()].find(p => p.scm === sc)
     if (providers.size === 1) return [...providers.values()][0]
-    return undefined
+    const items = [...providers.values()].map(p => ({
+      label: p.scm.rootUri?.fsPath ?? '(unknown)',
+      provider: p,
+    }))
+    const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select repository' })
+    return picked?.provider
   }
 
   ctx.subscriptions.push(
-    vscode.commands.registerCommand('taskChanges.selectBase', (sc?: vscode.SourceControl) => {
-      resolveProvider(sc)?.selectBase()
+    vscode.commands.registerCommand('taskChanges.selectBase', async (sc?: vscode.SourceControl) => {
+      (await resolveProvider(sc))?.selectBase()
     }),
-    vscode.commands.registerCommand('taskChanges.refresh', (sc?: vscode.SourceControl) => {
-      resolveProvider(sc)?.schedule()
+    vscode.commands.registerCommand('taskChanges.refresh', async (sc?: vscode.SourceControl) => {
+      (await resolveProvider(sc))?.schedule()
     }),
     vscode.commands.registerCommand('taskChanges.openFile', (resource: vscode.SourceControlResourceState) => {
       if (!resource?.resourceUri) return
