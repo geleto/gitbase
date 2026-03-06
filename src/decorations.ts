@@ -8,14 +8,15 @@ import { WORKAROUND_URI_FRAGMENT, WORKAROUND_DOUBLE_BADGE } from './workarounds'
 interface Deco { letter: string; color: vscode.ThemeColor; strikeThrough: boolean }
 
 export const DECO: Record<string, Deco> = {
-  A: { letter: 'A', color: new vscode.ThemeColor('gitDecoration.addedResourceForeground'),    strikeThrough: false },
-  M: { letter: 'M', color: new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'), strikeThrough: false },
-  D: { letter: 'D', color: new vscode.ThemeColor('gitDecoration.deletedResourceForeground'),  strikeThrough: true  },
-  R: { letter: 'R', color: new vscode.ThemeColor('gitDecoration.renamedResourceForeground'),  strikeThrough: false },
+  A: { letter: 'A', color: new vscode.ThemeColor('gitDecoration.addedResourceForeground'),        strikeThrough: false },
+  M: { letter: 'M', color: new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'),     strikeThrough: false },
+  D: { letter: 'D', color: new vscode.ThemeColor('gitDecoration.deletedResourceForeground'),      strikeThrough: true  },
+  R: { letter: 'R', color: new vscode.ThemeColor('gitDecoration.renamedResourceForeground'),      strikeThrough: false },
+  U: { letter: 'U', color: new vscode.ThemeColor('gitDecoration.untrackedResourceForeground'),    strikeThrough: false },
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed',
+  A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed', U: 'Untracked',
 }
 
 // ── File decoration provider ──────────────────────────────────────────────────

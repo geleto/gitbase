@@ -101,10 +101,11 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     await this.content.checkBranchTip(root, ref)
 
-    const [nsOut, numOut, dirtyOut] = await Promise.all([
+    const [nsOut, numOut, dirtyOut, untrackedOut] = await Promise.all([
       gitOrNull(root, 'diff', '--name-status', '-z', ref, '--'),
       gitOrNull(root, 'diff', '--numstat',     '-z', ref, '--'),
       ref === 'HEAD' ? null : gitOrNull(root, 'diff', 'HEAD', '--name-only', '-z', '--'),
+      gitOrNull(root, 'ls-files', '--others', '--exclude-standard', '-z'),
     ])
 
     if (nsOut === null) { this.group.resourceStates = []; this.decoProvider.clear(root); assertScmContext(); return }
@@ -112,13 +113,19 @@ export class TaskChangesProvider implements vscode.Disposable {
     const changes = parseNameStatus(nsOut)
     const binary  = numOut ? parseBinarySet(numOut) : new Set<string>()
 
+    // Append untracked files as 'U' — git diff does not report them.
+    const untracked = (untrackedOut ?? '').split('\0').filter(Boolean)
+    for (const p of untracked) changes.push({ status: 'U', path: p })
+
     this.group.resourceStates = changes.map(c => {
       const isBin = binary.has(c.path) || (c.oldPath ? binary.has(c.oldPath) : false)
       return this.makeState(root, ref, c, isBin)
     })
+    // Include untracked in dirtyPaths so WORKAROUND_DOUBLE_BADGE suppresses our 'A'
+    // badge where git already shows 'U' (untracked) in the Explorer.
     const dirtyPaths = ref === 'HEAD'
       ? new Set(changes.map(c => c.path))
-      : new Set((dirtyOut ?? '').split('\0').filter(Boolean))
+      : new Set([...(dirtyOut ?? '').split('\0').filter(Boolean), ...untracked])
     this.decoProvider.update(root, changes, dirtyPaths)
     assertScmContext()
   }
@@ -144,13 +151,15 @@ export class TaskChangesProvider implements vscode.Disposable {
       rightUri = workUri
     }
 
-    const d = DECO[status]!
+    const d = DECO[status] ?? DECO['M']!
     const diffTitle = `${nodePath.basename(c.path)} (since ${this.baseLabel})`
 
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
       : status === 'A'
-        ? { title: 'Open file', command: 'vscode.open', arguments: [workUri] }
+        ? { title: 'Open file', command: 'vscode.open',                  arguments: [workUri] }
+      : status === 'U'
+        ? { title: 'Open file', command: 'taskChanges.openUntracked',     arguments: [workUri] }
         : status === 'D'
           ? { title: 'Open file', command: 'vscode.open', arguments: [baseUri] }
           : { title: 'Open diff', command: 'vscode.diff', arguments: [baseUri, rightUri, diffTitle] }
@@ -309,6 +318,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       // Strip the #gitbase fragment (WORKAROUND_URI_FRAGMENT) before opening.
       const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
       void vscode.commands.executeCommand('vscode.open', uri)
+    }),
+    vscode.commands.registerCommand('taskChanges.openUntracked', async (uri: vscode.Uri) => {
+      // Temporarily disable scm.autoReveal so the git panel does not expand and select
+      // the file when the active editor changes. Restore the setting after opening.
+      const scmConfig = vscode.workspace.getConfiguration('scm')
+      const prev = scmConfig.get<boolean>('autoReveal')
+      if (prev !== false) await scmConfig.update('autoReveal', false, vscode.ConfigurationTarget.Global)
+      try {
+        await vscode.window.showTextDocument(vscode.Uri.from(uri))
+      } finally {
+        if (prev !== false) await scmConfig.update('autoReveal', prev, vscode.ConfigurationTarget.Global)
+      }
     }),
     vscode.commands.registerCommand('taskChanges.binaryNotice', (filePath: string) => {
       void vscode.window.showInformationMessage(`Binary file: ${nodePath.basename(filePath)} — diff not available.`)
