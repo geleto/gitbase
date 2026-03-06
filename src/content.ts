@@ -8,13 +8,13 @@ export const EMPTY_URI = vscode.Uri.parse('empty:empty')
 export function makeBaseUri(root: string, ref: string, fp: string): vscode.Uri {
   return vscode.Uri.from({
     scheme: 'basegit',
-    query: new URLSearchParams({ root, ref, fp }).toString(),
+    query: [root, ref, fp].map(encodeURIComponent).join('&'),
   })
 }
 
 function parseBaseUri(uri: vscode.Uri): { root: string; ref: string; fp: string } {
-  const p = new URLSearchParams(uri.query)
-  return { root: p.get('root') ?? '', ref: p.get('ref') ?? '', fp: p.get('fp') ?? '' }
+  const [root = '', ref = '', fp = ''] = uri.query.split('&').map(decodeURIComponent)
+  return { root, ref, fp }
 }
 
 // ── Content providers ─────────────────────────────────────────────────────────
@@ -49,14 +49,9 @@ export class BaseGitContentProvider implements vscode.TextDocumentContentProvide
       return this.shaCache.get(key)!
     }
 
-    const bkey = `${root}\0${ref}`
-    let entry = this.branchCaches.get(bkey)
-    if (!entry) {
-      // Lazy-seed before the first refresh has run
-      const tip = (await gitOrNull(root, 'rev-parse', ref))?.trim() ?? ''
-      entry = { tipSha: tip, files: new Map() }
-      this.branchCaches.set(bkey, entry)
-    }
+    await this.checkBranchTip(root, ref)
+    const entry = this.branchCaches.get(`${root}\0${ref}`)
+    if (!entry) return ''
     if (!entry.files.has(fp)) {
       entry.files.set(fp, await gitOrNull(root, 'show', `${ref}:${fp}`) ?? '')
     }

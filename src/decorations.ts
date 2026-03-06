@@ -14,7 +14,7 @@ export const DECO: Record<string, Deco> = {
   R: { letter: 'R', color: new vscode.ThemeColor('gitDecoration.renamedResourceForeground'),  strikeThrough: false },
 }
 
-export const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL: Record<string, string> = {
   A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed',
 }
 
