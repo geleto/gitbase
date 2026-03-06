@@ -84,7 +84,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       await this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  undefined)
       this.syncLabel()
       assertScmContext()
-      vscode.window.showWarningMessage(
+      void vscode.window.showWarningMessage(
         `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
         'Select Base',
       ).then(action => {
@@ -136,7 +136,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       rightUri = workUri
     }
 
-    const d = DECO[status] ?? DECO['M']
+    const d = DECO[status]!
     const diffTitle = `${nodePath.basename(c.path)} (since ${label})`
 
     const command: vscode.Command = isBin
@@ -229,6 +229,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 const providers = new Map<string, TaskChangesProvider>()
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+  providers.clear()
   const ext = vscode.extensions.getExtension<GitExtension>('vscode.git')
   if (!ext) {
     vscode.window.showErrorMessage('Task Changes: VS Code Git extension not found. Extension disabled.')
@@ -271,8 +272,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     if (sc) return [...providers.values()].find(p => p.scm === sc)
     if (providers.size === 1) return [...providers.values()][0]
     const items = [...providers.values()].map(p => ({
-      label: p.scm.rootUri?.fsPath ?? '(unknown)',
-      provider: p,
+      label:       nodePath.basename(p.scm.rootUri?.fsPath ?? '(unknown)'),
+      description: p.scm.rootUri?.fsPath,
+      provider:    p,
     }))
     const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select repository' })
     return picked?.provider

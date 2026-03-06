@@ -49,8 +49,9 @@ export class BaseGitContentProvider implements vscode.TextDocumentContentProvide
       return this.shaCache.get(key)!
     }
 
-    await this.checkBranchTip(root, ref)
-    const entry = this.branchCaches.get(`${root}\0${ref}`)
+    const bkey = `${root}\0${ref}`
+    if (!this.branchCaches.has(bkey)) await this.checkBranchTip(root, ref)
+    const entry = this.branchCaches.get(bkey)
     if (!entry) return ''
     if (!entry.files.has(fp)) {
       entry.files.set(fp, await gitOrNull(root, 'show', `${ref}:${fp}`) ?? '')

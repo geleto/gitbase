@@ -24,7 +24,7 @@ let GIT = 'git'
 
 export function setGitPath(path: string): void { GIT = path }
 
-export async function git(cwd: string, ...args: string[]): Promise<string> {
+async function git(cwd: string, ...args: string[]): Promise<string> {
   const r = await execFile(GIT, args, { cwd, maxBuffer: 10 * 1024 * 1024 })
   return r.stdout
 }
