@@ -58,6 +58,7 @@ export const WORKAROUND_DOUBLE_BADGE = true
  * Known side-effect: git extension inline buttons disappear briefly from the
  * git panel immediately after each GitBase refresh (until VS Code re-sets the
  * keys on the next git-resource hover).  Set to `false` to disable.
+ * See: docs/bug-vscode-scm-button-cache-contamination.md (secondary mitigation)
  */
 export const WORKAROUND_STALE_SCM_CONTEXT = true
 
