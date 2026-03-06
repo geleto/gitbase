@@ -1,0 +1,49 @@
+{
+  "name": "gitbase",
+  "displayName": "Task Changes",
+  "description": "SCM view showing working-tree changes relative to a selected branch, commit, or tag",
+  "version": "0.0.1",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["SCM Providers"],
+  "activationEvents": ["workspaceContains:.git"],
+  "main": "./out/extension",
+  "contributes": {
+    "commands": [
+      {
+        "command": "taskChanges.selectBase",
+        "title": "Select Base…",
+        "icon": "$(git-branch)",
+        "category": "Task Changes"
+      },
+      {
+        "command": "taskChanges.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Task Changes"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "taskChanges.selectBase",
+          "when": "scmProvider == taskchanges",
+          "group": "navigation@1"
+        },
+        {
+          "command": "taskChanges.refresh",
+          "when": "scmProvider == taskchanges",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
