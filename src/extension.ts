@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import * as cp from 'child_process'
 import * as nodePath from 'path'
 import * as util from 'util'
+import { WORKAROUND_URI_FRAGMENT, WORKAROUND_DOUBLE_BADGE, assertScmContext } from './workarounds'
 
 const execFile = util.promisify(cp.execFile)
 
@@ -231,60 +232,6 @@ class TaskChangesDecorationProvider implements vscode.FileDecorationProvider, vs
   dispose(): void { this._onDidChange.dispose() }
 }
 
-// ── Workaround flags ──────────────────────────────────────────────────────────
-
-/**
- * WORKAROUND A: VS Code SCM inline-button cache contamination.
- *
- * The VS Code SCM tree view caches the computed inline action buttons per
- * resource URI.  When the same file appears in both the native git SCM panel
- * and the GitBase panel (e.g. a file modified in the working tree but whose
- * base-relative diff is also tracked by GitBase), the git panel writes its
- * Stage / Discard / Unstage buttons into the cache under the plain file URI.
- * GitBase then renders its copy of that resource with the SAME URI and picks
- * up git's cached button set instead of its own.
- *
- * Fix: give GitBase resource states a URI with a `#gitbase` fragment.  The
- * fragment is invisible in the SCM label (VS Code uses `fsPath`, which strips
- * fragments, for display) but produces a distinct cache key, so GitBase always
- * gets a fresh, uncontaminated button set.
- *
- * Side-effect: none known.  Set to `false` to revert to plain file URIs.
- */
-const WORKAROUND_URI_FRAGMENT = true
-
-/**
- * WORKAROUND B: Explorer double-badge when a file appears in both panels.
- *
- * VS Code stacks FileDecoration badges from all registered providers for the
- * same URI.  A file that is modified in the working tree (and therefore also
- * decorated by the git extension under its plain `file:` URI) would receive
- * two overlapping badges — e.g. "M, M" — in the Explorer.
- *
- * Fix: skip registering the plain-URI FileDecoration for files that are
- * already dirty relative to HEAD (i.e. files the git extension will decorate).
- * GitBase's SCM-panel badge is unaffected because it uses the `#gitbase`
- * fragment URI (WORKAROUND_URI_FRAGMENT) which the git extension never touches.
- *
- * Set to `false` to always register the plain-URI decoration (causes double
- * badges in the Explorer for files in both panels).
- */
-const WORKAROUND_DOUBLE_BADGE = true
-
-/**
- * WORKAROUND C: VS Code stale SCM context keys.
- *
- * VS Code does not always flush `scmProvider` / `scmResourceGroup` context
- * keys when focus moves between SCM providers.  Workaround A above is the
- * primary fix; this secondary workaround re-asserts our context keys after
- * every refresh so that any residual staleness is cleared on the next render.
- *
- * Known side-effect: git extension inline buttons disappear briefly from the
- * git panel immediately after each GitBase refresh (until VS Code re-sets the
- * keys on the next git-resource hover).  Set to `false` to disable.
- */
-const WORKAROUND_STALE_SCM_CONTEXT = true
-
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
 export class TaskChangesProvider implements vscode.Disposable {
@@ -325,13 +272,6 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.schedule()
   }
 
-  /** Re-assert our context keys to evict stale values left by the git provider. */
-  private assertContext(): void {
-    if (!WORKAROUND_STALE_SCM_CONTEXT) return
-    void vscode.commands.executeCommand('setContext', 'scmProvider',      'taskchanges')
-    void vscode.commands.executeCommand('setContext', 'scmResourceGroup', 'changes')
-  }
-
   private syncLabel(): void {
     this.group.label = this.baseLabel === 'HEAD'
       ? 'HEAD · Select a base to begin'
@@ -370,7 +310,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       await this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, undefined)
       await this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  undefined)
       this.syncLabel()
-      this.assertContext()
+      assertScmContext()
       vscode.window.showWarningMessage(
         `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
         'Select Base',
@@ -388,7 +328,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       gitOrNull(root, 'diff', 'HEAD',   '--name-only', '-z', '--'),
     ])
 
-    if (nsOut === null) { this.group.resourceStates = []; this.decoProvider.clear(root); this.assertContext(); return }
+    if (nsOut === null) { this.group.resourceStates = []; this.decoProvider.clear(root); assertScmContext(); return }
 
     const changes = parseNameStatus(nsOut)
     const binary  = numOut ? parseBinarySet(numOut) : new Set<string>()
@@ -399,7 +339,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     })
     const dirtyPaths = new Set((dirtyOut ?? '').split('\0').filter(Boolean))
     this.decoProvider.update(root, changes, dirtyPaths)
-    this.assertContext()
+    assertScmContext()
   }
 
   private makeState(root: string, ref: string, label: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
