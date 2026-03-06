@@ -8,6 +8,8 @@ import { WORKAROUND_URI_FRAGMENT, assertScmContext } from './workarounds'
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
 export class TaskChangesProvider implements vscode.Disposable {
+  static readonly NO_BASE_LABEL = 'HEAD · Select a base to begin'
+
   readonly scm: vscode.SourceControl
   private readonly group: vscode.SourceControlResourceGroup
   private readonly subs: vscode.Disposable[] = []
@@ -31,7 +33,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.scm = vscode.scm.createSourceControl('taskchanges', 'GitBase Changes', repo.rootUri)
     this.scm.inputBox.visible = false
 
-    this.group = this.scm.createResourceGroup('changes', 'HEAD · Select a base to begin')
+    this.group = this.scm.createResourceGroup('changes', TaskChangesProvider.NO_BASE_LABEL)
     this.group.hideWhenEmpty = false
 
     const stored = ctx.workspaceState.get<string>(`taskChanges.base.${root}`)
@@ -48,7 +50,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 
   private syncLabel(): void {
     this.group.label = this.baseLabel === 'HEAD'
-      ? 'HEAD · Select a base to begin'
+      ? TaskChangesProvider.NO_BASE_LABEL
       : this.baseType === 'Task'
         ? this.baseLabel
         : `${this.baseType} · ${this.baseLabel}`
@@ -301,7 +303,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       void vscode.commands.executeCommand('vscode.open', uri)
     }),
     vscode.commands.registerCommand('taskChanges.binaryNotice', (filePath: string) => {
-      vscode.window.showInformationMessage(`Binary file: ${nodePath.basename(filePath)} — diff not available.`)
+      void vscode.window.showInformationMessage(`Binary file: ${nodePath.basename(filePath)} — diff not available.`)
     }),
   )
 }
