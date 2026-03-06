@@ -3,7 +3,7 @@ import * as nodePath from 'path'
 import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, detectRefType, parseNameStatus, parseBinarySet } from './git'
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider, EmptyContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
-import { WORKAROUND_URI_FRAGMENT, assertScmContext } from './workarounds'
+import { WORKAROUND_URI_FRAGMENT, assertScmContext, openWithoutAutoReveal } from './workarounds'
 import { registerLabelFormatter } from './labels'
 
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
       : status === 'A'
-        ? { title: 'Open file', command: 'vscode.open',                  arguments: [workUri] }
+        ? { title: 'Open file', command: 'taskChanges.openUntracked',     arguments: [workUri] }
       : status === 'U'
         ? { title: 'Open file', command: 'taskChanges.openUntracked',     arguments: [workUri] }
         : status === 'D'
@@ -319,17 +319,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
       void vscode.commands.executeCommand('vscode.open', uri)
     }),
-    vscode.commands.registerCommand('taskChanges.openUntracked', async (uri: vscode.Uri) => {
-      // Temporarily disable scm.autoReveal so the git panel does not expand and select
-      // the file when the active editor changes. Restore the setting after opening.
-      const scmConfig = vscode.workspace.getConfiguration('scm')
-      const prev = scmConfig.get<boolean>('autoReveal')
-      if (prev !== false) await scmConfig.update('autoReveal', false, vscode.ConfigurationTarget.Global)
-      try {
-        await vscode.window.showTextDocument(vscode.Uri.from(uri))
-      } finally {
-        if (prev !== false) await scmConfig.update('autoReveal', prev, vscode.ConfigurationTarget.Global)
-      }
+    vscode.commands.registerCommand('taskChanges.openUntracked', (uri: vscode.Uri) => {
+      void openWithoutAutoReveal(vscode.Uri.from(uri))
     }),
     vscode.commands.registerCommand('taskChanges.binaryNotice', (filePath: string) => {
       void vscode.window.showInformationMessage(`Binary file: ${nodePath.basename(filePath)} — diff not available.`)

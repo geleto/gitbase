@@ -71,3 +71,28 @@ export function assertScmContext(): void {
   void vscode.commands.executeCommand('setContext', 'scmProvider',      'taskchanges')
   void vscode.commands.executeCommand('setContext', 'scmResourceGroup', 'changes')
 }
+
+/**
+ * WORKAROUND D: scm.autoReveal expanding the git panel on file open.
+ *
+ * This is not a VS Code bug — it is the intended behaviour of `scm.autoReveal`:
+ * whenever the active editor changes VS Code searches all SCM providers for the
+ * newly active file and reveals it in the first provider that contains it.
+ * Untracked ('U') and added ('A') files live in the native git panel's
+ * "Untracked Changes" / "Changes" group, so opening them expands that panel
+ * and moves focus away from GitBase.
+ *
+ * Fix: wrap every such open in a brief `scm.autoReveal = false` window.  The
+ * setting is only written if it was already `true`, and is always restored in a
+ * `finally` block so a mid-open exception cannot leave it permanently disabled.
+ */
+export async function openWithoutAutoReveal(uri: vscode.Uri): Promise<void> {
+  const scmConfig = vscode.workspace.getConfiguration('scm')
+  const prev = scmConfig.get<boolean>('autoReveal')
+  if (prev !== false) await scmConfig.update('autoReveal', false, vscode.ConfigurationTarget.Global)
+  try {
+    await vscode.window.showTextDocument(uri)
+  } finally {
+    if (prev !== false) await scmConfig.update('autoReveal', prev, vscode.ConfigurationTarget.Global)
+  }
+}
