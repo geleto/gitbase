@@ -166,6 +166,58 @@ const DECO: Record<string, Deco> = {
   R: { letter: 'R', color: new vscode.ThemeColor('gitDecoration.renamedResourceForeground'),  strikeThrough: false },
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed',
+}
+
+// ── File decoration provider ──────────────────────────────────────────────────
+
+class TaskChangesDecorationProvider implements vscode.FileDecorationProvider, vscode.Disposable {
+  private readonly _onDidChange = new vscode.EventEmitter<vscode.Uri[]>()
+  readonly onDidChangeFileDecorations = this._onDidChange.event
+
+  private readonly byRoot = new Map<string, Map<string, vscode.Uri>>()
+  private readonly decos  = new Map<string, vscode.FileDecoration>()
+
+  update(root: string, changes: RawChange[], dirtyPaths: Set<string>): void {
+    const old  = this.byRoot.get(root) ?? new Map<string, vscode.Uri>()
+    const next = new Map<string, vscode.Uri>()
+    const fired: vscode.Uri[] = []
+
+    for (const c of changes) {
+      if (dirtyPaths.has(c.path)) continue   // git extension already decorates this file
+      const uri = vscode.Uri.file(nodePath.join(root, c.path))
+      const key = uri.toString()
+      next.set(key, uri)
+      const d = DECO[c.status] ?? DECO['M']
+      this.decos.set(key, new vscode.FileDecoration(d.letter, STATUS_LABEL[c.status] ?? 'Modified', d.color))
+      fired.push(uri)
+    }
+
+    for (const [key, uri] of old) {
+      if (!next.has(key)) { this.decos.delete(key); fired.push(uri) }
+    }
+
+    this.byRoot.set(root, next)
+    if (fired.length) this._onDidChange.fire(fired)
+  }
+
+  clear(root: string): void {
+    const old = this.byRoot.get(root)
+    if (!old?.size) return
+    const fired = [...old.values()]
+    for (const key of old.keys()) this.decos.delete(key)
+    this.byRoot.delete(root)
+    this._onDidChange.fire(fired)
+  }
+
+  provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
+    return this.decos.get(uri.toString())
+  }
+
+  dispose(): void { this._onDidChange.dispose() }
+}
+
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
 export class TaskChangesProvider implements vscode.Disposable {
@@ -181,9 +233,10 @@ export class TaskChangesProvider implements vscode.Disposable {
   private timer: ReturnType<typeof setTimeout> | undefined
 
   constructor(
-    private readonly repo:    GitRepository,
-    private readonly ctx:     vscode.ExtensionContext,
-    private readonly content: BaseGitContentProvider,
+    private readonly repo:        GitRepository,
+    private readonly ctx:         vscode.ExtensionContext,
+    private readonly content:     BaseGitContentProvider,
+    private readonly decoProvider: TaskChangesDecorationProvider,
   ) {
     const root = repo.rootUri.fsPath
 
@@ -235,6 +288,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     const ok = await gitOrNull(root, 'rev-parse', '--verify', ref)
     if (!ok) {
       this.group.resourceStates = []
+      this.decoProvider.clear(root)
       this.baseRef   = 'HEAD'
       this.baseLabel = 'HEAD'
       this.baseType  = 'Task'
@@ -253,12 +307,13 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     await this.content.checkBranchTip(root, ref)
 
-    const [nsOut, numOut] = await Promise.all([
-      gitOrNull(root, 'diff', '--name-status', '-z', ref, '--'),
-      gitOrNull(root, 'diff', '--numstat',     '-z', ref, '--'),
+    const [nsOut, numOut, dirtyOut] = await Promise.all([
+      gitOrNull(root, 'diff', '--name-status', '-z', ref,    '--'),
+      gitOrNull(root, 'diff', '--numstat',     '-z', ref,    '--'),
+      gitOrNull(root, 'diff', 'HEAD',   '--name-only', '-z', '--'),
     ])
 
-    if (nsOut === null) { this.group.resourceStates = []; return }
+    if (nsOut === null) { this.group.resourceStates = []; this.decoProvider.clear(root); return }
 
     const changes = parseNameStatus(nsOut)
     const binary  = numOut ? parseBinarySet(numOut) : new Set<string>()
@@ -267,6 +322,8 @@ export class TaskChangesProvider implements vscode.Disposable {
       const isBin = binary.has(c.path) || (c.oldPath ? binary.has(c.oldPath) : false)
       return this.makeState(root, ref, this.baseLabel, c, isBin)
     })
+    const dirtyPaths = new Set((dirtyOut ?? '').split('\0').filter(Boolean))
+    this.decoProvider.update(root, changes, dirtyPaths)
   }
 
   private makeState(root: string, ref: string, label: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
@@ -296,14 +353,9 @@ export class TaskChangesProvider implements vscode.Disposable {
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
       : { title: 'Open diff',   command: 'vscode.diff',              arguments: [baseUri, rightUri, diffTitle] }
 
-    // `letter` and `color` are valid SCM decoration properties read by VS Code's
-    // SCM view but absent from @types/vscode — cast through unknown to satisfy TS.
-    const decorations = {
+    const decorations: vscode.SourceControlResourceDecorations = {
       strikeThrough: d.strikeThrough,
-      tooltip: `${c.path} [${d.letter}]`,
-      letter: d.letter,
-      color:  d.color,
-    } as unknown as vscode.SourceControlResourceDecorations
+    }
 
     return { resourceUri: workUri, decorations, command }
   }
@@ -378,6 +430,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.subs.forEach(d => d.dispose())
     if (this.timer) clearTimeout(this.timer)
     this.scm.dispose()
+    this.decoProvider.clear(this.repo.rootUri.fsPath)
   }
 }
 
@@ -396,16 +449,19 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const api = ext.exports.getAPI(1)
   GIT = api.git.path
 
-  const content = new BaseGitContentProvider()
+  const content      = new BaseGitContentProvider()
+  const decoProvider = new TaskChangesDecorationProvider()
   ctx.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider('basegit', content),
     vscode.workspace.registerTextDocumentContentProvider('empty',   new EmptyContentProvider()),
+    vscode.window.registerFileDecorationProvider(decoProvider),
+    decoProvider,
   )
 
   function addRepo(repo: GitRepository): void {
     const root = repo.rootUri.fsPath
     if (providers.has(root)) return
-    const p = new TaskChangesProvider(repo, ctx, content)
+    const p = new TaskChangesProvider(repo, ctx, content, decoProvider)
     providers.set(root, p)
     ctx.subscriptions.push(p)
   }
