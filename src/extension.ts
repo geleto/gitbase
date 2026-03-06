@@ -16,7 +16,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 
   private baseRef   = 'HEAD'
   private baseLabel = 'HEAD'
-  private baseType  = 'Task'
+  private baseType: 'Branch' | 'Tag' | 'Commit' | undefined = undefined
   private running  = false
   private dirty    = false
   private disposed = false
@@ -40,7 +40,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     if (stored) {
       this.baseRef   = stored
       this.baseLabel = ctx.workspaceState.get<string>(`taskChanges.baseLabel.${root}`) ?? stored
-      this.baseType  = ctx.workspaceState.get<string>(`taskChanges.baseType.${root}`) ?? 'Task'
+      this.baseType  = ctx.workspaceState.get<'Branch' | 'Tag' | 'Commit'>(`taskChanges.baseType.${root}`)
       this.syncLabel()
     }
 
@@ -51,7 +51,7 @@ export class TaskChangesProvider implements vscode.Disposable {
   private syncLabel(): void {
     this.group.label = this.baseLabel === 'HEAD'
       ? TaskChangesProvider.NO_BASE_LABEL
-      : this.baseType === 'Task'
+      : !this.baseType
         ? this.baseLabel
         : `${this.baseType} · ${this.baseLabel}`
   }
@@ -76,14 +76,14 @@ export class TaskChangesProvider implements vscode.Disposable {
     const root = this.repo.rootUri.fsPath
     const ref  = this.baseRef
 
-    // Validate ref
-    const ok = await gitOrNull(root, 'rev-parse', '--verify', ref)
+    // Validate ref (HEAD is always resolvable; skip to avoid spurious warning on unborn repos)
+    const ok = ref === 'HEAD' || await gitOrNull(root, 'rev-parse', '--verify', ref)
     if (!ok) {
       this.group.resourceStates = []
       this.decoProvider.clear(root)
       this.baseRef   = 'HEAD'
       this.baseLabel = 'HEAD'
-      this.baseType  = 'Task'
+      this.baseType  = undefined
       await this.ctx.workspaceState.update(`taskChanges.base.${root}`,      undefined)
       await this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, undefined)
       await this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  undefined)
@@ -101,9 +101,9 @@ export class TaskChangesProvider implements vscode.Disposable {
     await this.content.checkBranchTip(root, ref)
 
     const [nsOut, numOut, dirtyOut] = await Promise.all([
-      gitOrNull(root, 'diff', '--name-status', '-z', ref,    '--'),
-      gitOrNull(root, 'diff', '--numstat',     '-z', ref,    '--'),
-      gitOrNull(root, 'diff', 'HEAD',   '--name-only', '-z', '--'),
+      gitOrNull(root, 'diff', '--name-status', '-z', ref, '--'),
+      gitOrNull(root, 'diff', '--numstat',     '-z', ref, '--'),
+      ref === 'HEAD' ? null : gitOrNull(root, 'diff', 'HEAD', '--name-only', '-z', '--'),
     ])
 
     if (nsOut === null) { this.group.resourceStates = []; this.decoProvider.clear(root); assertScmContext(); return }
@@ -115,7 +115,9 @@ export class TaskChangesProvider implements vscode.Disposable {
       const isBin = binary.has(c.path) || (c.oldPath ? binary.has(c.oldPath) : false)
       return this.makeState(root, ref, c, isBin)
     })
-    const dirtyPaths = new Set((dirtyOut ?? '').split('\0').filter(Boolean))
+    const dirtyPaths = ref === 'HEAD'
+      ? new Set(changes.map(c => c.path))
+      : new Set((dirtyOut ?? '').split('\0').filter(Boolean))
     this.decoProvider.update(root, changes, dirtyPaths)
     assertScmContext()
   }
@@ -289,7 +291,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand('taskChanges.selectBase', async (sc?: vscode.SourceControl) => {
-      (await resolveProvider(sc))?.selectBase()
+      void (await resolveProvider(sc))?.selectBase()
     }),
     vscode.commands.registerCommand('taskChanges.refresh', async (sc?: vscode.SourceControl) => {
       (await resolveProvider(sc))?.schedule()
