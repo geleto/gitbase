@@ -148,7 +148,9 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
-      : { title: 'Open diff',   command: 'vscode.diff',              arguments: [baseUri, rightUri, diffTitle] }
+      : status === 'A'
+        ? { title: 'Open file', command: 'vscode.open',              arguments: [workUri] }
+        : { title: 'Open diff', command: 'vscode.diff',              arguments: [baseUri, rightUri, diffTitle] }
 
     const decorations: vscode.SourceControlResourceDecorations = {
       strikeThrough: d.strikeThrough,
