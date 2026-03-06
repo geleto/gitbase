@@ -42,7 +42,7 @@ export async function gitOrNull(cwd: string, ...args: string[]): Promise<string 
 }
 
 export function isSha(ref: string): boolean {
-  return /^[0-9a-f]{40}$/i.test(ref)
+  return /^[0-9a-f]{40}$/.test(ref)
 }
 
 export async function detectRefType(root: string, ref: string): Promise<'Branch' | 'Tag' | 'Commit'> {

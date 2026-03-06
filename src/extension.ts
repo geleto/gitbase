@@ -15,8 +15,9 @@ export class TaskChangesProvider implements vscode.Disposable {
   private baseRef   = 'HEAD'
   private baseLabel = 'HEAD'
   private baseType  = 'Task'
-  private running = false
-  private dirty   = false
+  private running  = false
+  private dirty    = false
+  private disposed = false
   private timer: ReturnType<typeof setTimeout> | undefined
 
   constructor(
@@ -54,11 +55,13 @@ export class TaskChangesProvider implements vscode.Disposable {
   }
 
   schedule(): void {
+    if (this.disposed) return
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => this.refresh(), 400)
   }
 
   private async refresh(): Promise<void> {
+    if (this.disposed) return
     if (this.running) { this.dirty = true; return }
     this.running = true; this.dirty = false
     try { await this.run() } finally {
@@ -88,7 +91,7 @@ export class TaskChangesProvider implements vscode.Disposable {
         `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
         'Select Base',
       ).then(action => {
-        if (action === 'Select Base') vscode.commands.executeCommand('taskChanges.selectBase', this.scm)
+        if (action === 'Select Base') void vscode.commands.executeCommand('taskChanges.selectBase', this.scm)
       })
       return
     }
@@ -108,14 +111,14 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     this.group.resourceStates = changes.map(c => {
       const isBin = binary.has(c.path) || (c.oldPath ? binary.has(c.oldPath) : false)
-      return this.makeState(root, ref, this.baseLabel, c, isBin)
+      return this.makeState(root, ref, c, isBin)
     })
     const dirtyPaths = new Set((dirtyOut ?? '').split('\0').filter(Boolean))
     this.decoProvider.update(root, changes, dirtyPaths)
     assertScmContext()
   }
 
-  private makeState(root: string, ref: string, label: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
+  private makeState(root: string, ref: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
     const workUri     = vscode.Uri.file(nodePath.join(root, c.path))
     const resourceUri = WORKAROUND_URI_FRAGMENT ? workUri.with({ fragment: 'gitbase' }) : workUri
     const { status }  = c
@@ -137,7 +140,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     }
 
     const d = DECO[status]!
-    const diffTitle = `${nodePath.basename(c.path)} (since ${label})`
+    const diffTitle = `${nodePath.basename(c.path)} (since ${this.baseLabel})`
 
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
@@ -195,7 +198,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     const resolved = (await gitOrNull(root, 'rev-parse', '--verify', newRef))?.trim()
     if (!resolved) {
-      vscode.window.showErrorMessage(`Task Changes: "${newRef}" is not a valid Git ref.`)
+      void vscode.window.showErrorMessage(`Task Changes: "${newRef}" is not a valid Git ref.`)
       return
     }
 
@@ -217,6 +220,7 @@ export class TaskChangesProvider implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.disposed = true
     this.subs.forEach(d => d.dispose())
     if (this.timer) clearTimeout(this.timer)
     this.scm.dispose()
@@ -270,6 +274,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // When invoked from the command palette with multiple repos open, ask the user to pick.
   async function resolveProvider(sc?: vscode.SourceControl): Promise<TaskChangesProvider | undefined> {
     if (sc) return [...providers.values()].find(p => p.scm === sc)
+    if (providers.size === 0) return undefined
     if (providers.size === 1) return [...providers.values()][0]
     const items = [...providers.values()].map(p => ({
       label:       nodePath.basename(p.scm.rootUri?.fsPath ?? '(unknown)'),
@@ -293,7 +298,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       // VS Code serialises the resource state before invoking the command from the inline menu.
       // Strip the #gitbase fragment (WORKAROUND_URI_FRAGMENT) before opening.
       const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
-      vscode.commands.executeCommand('vscode.open', uri)
+      void vscode.commands.executeCommand('vscode.open', uri)
     }),
     vscode.commands.registerCommand('taskChanges.binaryNotice', (filePath: string) => {
       vscode.window.showInformationMessage(`Binary file: ${nodePath.basename(filePath)} — diff not available.`)
