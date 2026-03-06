@@ -168,7 +168,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     let newLabel: string | undefined   // human-readable display name; defaults to newRef
 
     if (typeItem === 'Branch…') {
-      const out   = await gitOrNull(root, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/', 'refs/remotes/')
+      const out   = await gitOrNull(root, 'for-each-ref', '--format=%(refname:short)', '--exclude=refs/remotes/*/HEAD', 'refs/heads/', 'refs/remotes/')
       const items = (out ?? '').split('\n').map(s => s.trim()).filter(Boolean)
       newRef = await vscode.window.showQuickPick(items, { placeHolder: 'Select branch…', matchOnDescription: true })
 
