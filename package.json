@@ -21,9 +21,22 @@
         "title": "Refresh",
         "icon": "$(refresh)",
         "category": "Task Changes"
+      },
+      {
+        "command": "taskChanges.openFile",
+        "title": "Open File",
+        "icon": "$(go-to-file)",
+        "category": "Task Changes"
       }
     ],
     "menus": {
+      "scm/resourceState/inline": [
+        {
+          "command": "taskChanges.openFile",
+          "when": "scmProvider == taskchanges && scmResourceState != D",
+          "group": "inline"
+        }
+      ],
       "scm/title": [
         {
           "command": "taskChanges.selectBase",

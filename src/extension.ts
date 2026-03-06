@@ -185,13 +185,26 @@ class TaskChangesDecorationProvider implements vscode.FileDecorationProvider, vs
     const fired: vscode.Uri[] = []
 
     for (const c of changes) {
-      if (dirtyPaths.has(c.path)) continue   // git extension already decorates this file
-      const uri = vscode.Uri.file(nodePath.join(root, c.path))
-      const key = uri.toString()
-      next.set(key, uri)
-      const d = DECO[c.status] ?? DECO['M']
-      this.decos.set(key, new vscode.FileDecoration(d.letter, STATUS_LABEL[c.status] ?? 'Modified', d.color))
-      fired.push(uri)
+      const fileUri = vscode.Uri.file(nodePath.join(root, c.path))
+      const d    = DECO[c.status] ?? DECO['M']
+      const deco = new vscode.FileDecoration(d.letter, STATUS_LABEL[c.status] ?? 'Modified', d.color)
+
+      // SCM-panel decoration: keyed by the fragment URI used as resourceUri.
+      if (WORKAROUND_URI_FRAGMENT) {
+        const fragUri = fileUri.with({ fragment: 'gitbase' })
+        const fragKey = fragUri.toString()
+        next.set(fragKey, fragUri)
+        this.decos.set(fragKey, deco)
+        fired.push(fragUri)
+      }
+
+      // Explorer decoration: plain file URI, skipped when git already decorates it.
+      if (!dirtyPaths.has(c.path)) {
+        const fileKey = fileUri.toString()
+        next.set(fileKey, fileUri)
+        this.decos.set(fileKey, deco)
+        fired.push(fileUri)
+      }
     }
 
     for (const [key, uri] of old) {
@@ -217,6 +230,42 @@ class TaskChangesDecorationProvider implements vscode.FileDecorationProvider, vs
 
   dispose(): void { this._onDidChange.dispose() }
 }
+
+// ── Workaround flags ──────────────────────────────────────────────────────────
+
+/**
+ * WORKAROUND A: VS Code SCM inline-button cache contamination.
+ *
+ * The VS Code SCM tree view caches the computed inline action buttons per
+ * resource URI.  When the same file appears in both the native git SCM panel
+ * and the GitBase panel (e.g. a file modified in the working tree but whose
+ * base-relative diff is also tracked by GitBase), the git panel writes its
+ * Stage / Discard / Unstage buttons into the cache under the plain file URI.
+ * GitBase then renders its copy of that resource with the SAME URI and picks
+ * up git's cached button set instead of its own.
+ *
+ * Fix: give GitBase resource states a URI with a `#gitbase` fragment.  The
+ * fragment is invisible in the SCM label (VS Code uses `fsPath`, which strips
+ * fragments, for display) but produces a distinct cache key, so GitBase always
+ * gets a fresh, uncontaminated button set.
+ *
+ * Side-effect: none known.  Set to `false` to revert to plain file URIs.
+ */
+const WORKAROUND_URI_FRAGMENT = true
+
+/**
+ * WORKAROUND B: VS Code stale SCM context keys.
+ *
+ * VS Code does not always flush `scmProvider` / `scmResourceGroup` context
+ * keys when focus moves between SCM providers.  Workaround A above is the
+ * primary fix; this secondary workaround re-asserts our context keys after
+ * every refresh so that any residual staleness is cleared on the next render.
+ *
+ * Known side-effect: git extension inline buttons disappear briefly from the
+ * git panel immediately after each GitBase refresh (until VS Code re-sets the
+ * keys on the next git-resource hover).  Set to `false` to disable.
+ */
+const WORKAROUND_STALE_SCM_CONTEXT = true
 
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
@@ -258,6 +307,13 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.schedule()
   }
 
+  /** Re-assert our context keys to evict stale values left by the git provider. */
+  private assertContext(): void {
+    if (!WORKAROUND_STALE_SCM_CONTEXT) return
+    void vscode.commands.executeCommand('setContext', 'scmProvider',      'taskchanges')
+    void vscode.commands.executeCommand('setContext', 'scmResourceGroup', 'changes')
+  }
+
   private syncLabel(): void {
     this.group.label = this.baseLabel === 'HEAD'
       ? 'HEAD · Select a base to begin'
@@ -296,6 +352,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       await this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, undefined)
       await this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  undefined)
       this.syncLabel()
+      this.assertContext()
       vscode.window.showWarningMessage(
         `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
         'Select Base',
@@ -313,7 +370,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       gitOrNull(root, 'diff', 'HEAD',   '--name-only', '-z', '--'),
     ])
 
-    if (nsOut === null) { this.group.resourceStates = []; this.decoProvider.clear(root); return }
+    if (nsOut === null) { this.group.resourceStates = []; this.decoProvider.clear(root); this.assertContext(); return }
 
     const changes = parseNameStatus(nsOut)
     const binary  = numOut ? parseBinarySet(numOut) : new Set<string>()
@@ -324,10 +381,12 @@ export class TaskChangesProvider implements vscode.Disposable {
     })
     const dirtyPaths = new Set((dirtyOut ?? '').split('\0').filter(Boolean))
     this.decoProvider.update(root, changes, dirtyPaths)
+    this.assertContext()
   }
 
   private makeState(root: string, ref: string, label: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
-    const workUri = vscode.Uri.file(nodePath.join(root, c.path))
+    const workUri    = vscode.Uri.file(nodePath.join(root, c.path))
+    const resourceUri = WORKAROUND_URI_FRAGMENT ? workUri.with({ fragment: 'gitbase' }) : workUri
     const { status } = c
 
     let baseUri: vscode.Uri
@@ -357,7 +416,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       strikeThrough: d.strikeThrough,
     }
 
-    return { resourceUri: workUri, decorations, command }
+    return { resourceUri, decorations, command, contextValue: status }
   }
 
   async selectBase(): Promise<void> {
@@ -488,6 +547,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     }),
     vscode.commands.registerCommand('taskChanges.refresh', (sc?: vscode.SourceControl) => {
       resolveProvider(sc)?.schedule()
+    }),
+    vscode.commands.registerCommand('taskChanges.openFile', (resource: vscode.SourceControlResourceState) => {
+      if (!resource?.resourceUri) return
+      // resourceUri may arrive as a plain JSON object (not a vscode.Uri instance) when
+      // VS Code serialises the resource state before invoking the command from the inline menu.
+      // Strip the #gitbase fragment (WORKAROUND_URI_FRAGMENT) before opening.
+      const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
+      vscode.commands.executeCommand('vscode.open', uri)
     }),
     vscode.commands.registerCommand('taskChanges.binaryNotice', (filePath: string) => {
       vscode.window.showInformationMessage(`Binary file: ${nodePath.basename(filePath)} — diff not available.`)
