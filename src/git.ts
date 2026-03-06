@@ -30,7 +30,15 @@ export async function git(cwd: string, ...args: string[]): Promise<string> {
 }
 
 export async function gitOrNull(cwd: string, ...args: string[]): Promise<string | null> {
-  try { return await git(cwd, ...args) } catch { return null }
+  try {
+    return await git(cwd, ...args)
+  } catch (err) {
+    // Re-throw system-level errors (e.g. ENOENT — git not on PATH, EPERM, etc.).
+    // Those have a string error code.  Git process exits (ref not found, etc.)
+    // have a numeric exit code and are the expected null case.
+    if (typeof (err as NodeJS.ErrnoException).code === 'string') throw err
+    return null
+  }
 }
 
 export function isSha(ref: string): boolean {
