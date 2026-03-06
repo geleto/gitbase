@@ -37,6 +37,13 @@
           "group": "inline"
         }
       ],
+      "scm/resourceState/context": [
+        {
+          "command": "taskChanges.openFile",
+          "when": "scmProvider == taskchanges && scmResourceState != D",
+          "group": "inline@1"
+        }
+      ],
       "scm/title": [
         {
           "command": "taskChanges.selectBase",
