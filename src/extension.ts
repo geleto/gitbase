@@ -67,7 +67,11 @@ export class TaskChangesProvider implements vscode.Disposable {
     if (this.disposed) return
     if (this.running) { this.dirty = true; return }
     this.running = true; this.dirty = false
-    try { await this.run() } finally {
+    try {
+      await this.run()
+    } catch (err) {
+      void vscode.window.showErrorMessage(`GitBase: refresh failed — ${(err as Error).message ?? err}`)
+    } finally {
       this.running = false
       if (this.dirty) this.schedule()
     }
@@ -156,9 +160,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
-      : status === 'A'
-        ? { title: 'Open file', command: 'taskChanges.openUntracked',     arguments: [workUri] }
-      : status === 'U'
+      : (status === 'A' || status === 'U')
         ? { title: 'Open file', command: 'taskChanges.openUntracked',     arguments: [workUri] }
         : status === 'D'
           ? { title: 'Open file', command: 'vscode.open', arguments: [baseUri] }
@@ -317,7 +319,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       // VS Code serialises the resource state before invoking the command from the inline menu.
       // Strip the #gitbase fragment (WORKAROUND_URI_FRAGMENT) before opening.
       const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
-      void vscode.commands.executeCommand('vscode.open', uri)
+      // A/U files live in the git panel too — use openWithoutAutoReveal so it does not expand.
+      if (resource.contextValue === 'A' || resource.contextValue === 'U') {
+        void openWithoutAutoReveal(uri)
+      } else {
+        void vscode.commands.executeCommand('vscode.open', uri)
+      }
     }),
     vscode.commands.registerCommand('taskChanges.openUntracked', (uri: vscode.Uri) => {
       void openWithoutAutoReveal(vscode.Uri.from(uri))

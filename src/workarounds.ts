@@ -82,9 +82,11 @@ export function assertScmContext(): void {
  * "Untracked Changes" / "Changes" group, so opening them expands that panel
  * and moves focus away from GitBase.
  *
- * Fix: wrap every such open in a brief `scm.autoReveal = false` window.  The
- * setting is only written if it was already `true`, and is always restored in a
- * `finally` block so a mid-open exception cannot leave it permanently disabled.
+ * Fix: briefly set `scm.autoReveal` to `false` while opening the file, then
+ * restore the previous value in a `finally` block.  The setting is only
+ * written if it was already `true`, so a user who has disabled autoReveal is
+ * not affected.  `focusActiveEditorGroup` cannot be used instead because it
+ * itself triggers `onDidChangeActiveTextEditor` and re-fires autoReveal.
  */
 export async function openWithoutAutoReveal(uri: vscode.Uri): Promise<void> {
   const scmConfig = vscode.workspace.getConfiguration('scm')
