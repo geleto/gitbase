@@ -6,6 +6,7 @@
   "engines": { "vscode": "^1.85.0" },
   "categories": ["SCM Providers"],
   "activationEvents": ["workspaceContains:.git"],
+  "icon": "images/logo.png",
   "main": "./out/extension",
   "contributes": {
     "commands": [
