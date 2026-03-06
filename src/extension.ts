@@ -1,150 +1,9 @@
 import * as vscode from 'vscode'
 import * as nodePath from 'path'
-import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, isSha, detectRefType, parseNameStatus, parseBinarySet } from './git'
-import { WORKAROUND_URI_FRAGMENT, WORKAROUND_DOUBLE_BADGE, assertScmContext } from './workarounds'
-
-// ── URI helpers ───────────────────────────────────────────────────────────────
-
-const EMPTY_URI = vscode.Uri.parse('empty:empty')
-
-function makeBaseUri(root: string, ref: string, fp: string): vscode.Uri {
-  return vscode.Uri.from({
-    scheme: 'basegit',
-    query: new URLSearchParams({ root, ref, fp }).toString(),
-  })
-}
-
-function parseBaseUri(uri: vscode.Uri): { root: string; ref: string; fp: string } {
-  const p = new URLSearchParams(uri.query)
-  return { root: p.get('root') ?? '', ref: p.get('ref') ?? '', fp: p.get('fp') ?? '' }
-}
-
-// ── Content providers ─────────────────────────────────────────────────────────
-
-class BaseGitContentProvider implements vscode.TextDocumentContentProvider {
-  // SHA-based refs: permanent for the session
-  private readonly shaCache = new Map<string, string>()
-  // Branch/tag-based refs: keyed by "root\0ref"; invalidated when tip SHA changes
-  private readonly branchCaches = new Map<string, { tipSha: string; files: Map<string, string> }>()
-
-  /** Call once per refresh before serving content, to invalidate stale branch caches. */
-  async checkBranchTip(root: string, ref: string): Promise<void> {
-    if (isSha(ref)) return
-    const tip = (await gitOrNull(root, 'rev-parse', ref))?.trim()
-    if (!tip) return
-    const key = `${root}\0${ref}`
-    const entry = this.branchCaches.get(key)
-    if (!entry || entry.tipSha !== tip) {
-      this.branchCaches.set(key, { tipSha: tip, files: new Map() })
-    }
-  }
-
-  async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
-    const { root, ref, fp } = parseBaseUri(uri)
-    if (!root || !ref || !fp) return ''
-
-    if (isSha(ref)) {
-      const key = `${root}\0${ref}\0${fp}`
-      if (!this.shaCache.has(key)) {
-        this.shaCache.set(key, await gitOrNull(root, 'show', `${ref}:${fp}`) ?? '')
-      }
-      return this.shaCache.get(key)!
-    }
-
-    const bkey = `${root}\0${ref}`
-    let entry = this.branchCaches.get(bkey)
-    if (!entry) {
-      // Lazy-seed before the first refresh has run
-      const tip = (await gitOrNull(root, 'rev-parse', ref))?.trim() ?? ''
-      entry = { tipSha: tip, files: new Map() }
-      this.branchCaches.set(bkey, entry)
-    }
-    if (!entry.files.has(fp)) {
-      entry.files.set(fp, await gitOrNull(root, 'show', `${ref}:${fp}`) ?? '')
-    }
-    return entry.files.get(fp)!
-  }
-}
-
-class EmptyContentProvider implements vscode.TextDocumentContentProvider {
-  provideTextDocumentContent(): string { return '' }
-}
-
-// ── Decorations ───────────────────────────────────────────────────────────────
-
-interface Deco { letter: string; color: vscode.ThemeColor; strikeThrough: boolean }
-
-const DECO: Record<string, Deco> = {
-  A: { letter: 'A', color: new vscode.ThemeColor('gitDecoration.addedResourceForeground'),    strikeThrough: false },
-  M: { letter: 'M', color: new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'), strikeThrough: false },
-  D: { letter: 'D', color: new vscode.ThemeColor('gitDecoration.deletedResourceForeground'),  strikeThrough: true  },
-  R: { letter: 'R', color: new vscode.ThemeColor('gitDecoration.renamedResourceForeground'),  strikeThrough: false },
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed',
-}
-
-// ── File decoration provider ──────────────────────────────────────────────────
-
-class TaskChangesDecorationProvider implements vscode.FileDecorationProvider, vscode.Disposable {
-  private readonly _onDidChange = new vscode.EventEmitter<vscode.Uri[]>()
-  readonly onDidChangeFileDecorations = this._onDidChange.event
-
-  private readonly byRoot = new Map<string, Map<string, vscode.Uri>>()
-  private readonly decos  = new Map<string, vscode.FileDecoration>()
-
-  update(root: string, changes: RawChange[], dirtyPaths: Set<string>): void {
-    const old  = this.byRoot.get(root) ?? new Map<string, vscode.Uri>()
-    const next = new Map<string, vscode.Uri>()
-    const fired: vscode.Uri[] = []
-
-    for (const c of changes) {
-      const fileUri = vscode.Uri.file(nodePath.join(root, c.path))
-      const d    = DECO[c.status] ?? DECO['M']
-      const deco = new vscode.FileDecoration(d.letter, STATUS_LABEL[c.status] ?? 'Modified', d.color)
-
-      // SCM-panel decoration: keyed by the fragment URI used as resourceUri.
-      if (WORKAROUND_URI_FRAGMENT) {
-        const fragUri = fileUri.with({ fragment: 'gitbase' })
-        const fragKey = fragUri.toString()
-        next.set(fragKey, fragUri)
-        this.decos.set(fragKey, deco)
-        fired.push(fragUri)
-      }
-
-      // Explorer decoration: plain file URI, skipped when git already decorates it.
-      if (!WORKAROUND_DOUBLE_BADGE || !dirtyPaths.has(c.path)) {
-        const fileKey = fileUri.toString()
-        next.set(fileKey, fileUri)
-        this.decos.set(fileKey, deco)
-        fired.push(fileUri)
-      }
-    }
-
-    for (const [key, uri] of old) {
-      if (!next.has(key)) { this.decos.delete(key); fired.push(uri) }
-    }
-
-    this.byRoot.set(root, next)
-    if (fired.length) this._onDidChange.fire(fired)
-  }
-
-  clear(root: string): void {
-    const old = this.byRoot.get(root)
-    if (!old?.size) return
-    const fired = [...old.values()]
-    for (const key of old.keys()) this.decos.delete(key)
-    this.byRoot.delete(root)
-    this._onDidChange.fire(fired)
-  }
-
-  provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
-    return this.decos.get(uri.toString())
-  }
-
-  dispose(): void { this._onDidChange.dispose() }
-}
+import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, detectRefType, parseNameStatus, parseBinarySet } from './git'
+import { EMPTY_URI, makeBaseUri, BaseGitContentProvider, EmptyContentProvider } from './content'
+import { DECO, TaskChangesDecorationProvider } from './decorations'
+import { WORKAROUND_URI_FRAGMENT, assertScmContext } from './workarounds'
 
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
@@ -257,9 +116,9 @@ export class TaskChangesProvider implements vscode.Disposable {
   }
 
   private makeState(root: string, ref: string, label: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
-    const workUri    = vscode.Uri.file(nodePath.join(root, c.path))
+    const workUri     = vscode.Uri.file(nodePath.join(root, c.path))
     const resourceUri = WORKAROUND_URI_FRAGMENT ? workUri.with({ fragment: 'gitbase' }) : workUri
-    const { status } = c
+    const { status }  = c
 
     let baseUri: vscode.Uri
     let rightUri: vscode.Uri
