@@ -5,10 +5,12 @@ import { gitOrNull, isSha } from './git'
 
 export const EMPTY_URI = vscode.Uri.parse('empty:empty')
 
-export function makeBaseUri(root: string, ref: string, fp: string): vscode.Uri {
+export function makeBaseUri(root: string, ref: string, fp: string, suffix = ''): vscode.Uri {
   return vscode.Uri.from({
-    scheme: 'basegit',
-    query: [root, ref, fp].map(encodeURIComponent).join('&'),
+    scheme:   'basegit',
+    path:     '/' + fp,   // gives VS Code a path to derive the tab label from
+    query:    [root, ref, fp].map(encodeURIComponent).join('&'),
+    fragment: suffix,     // shown parenthetically in the tab title by the ResourceLabelFormatter
   })
 }
 

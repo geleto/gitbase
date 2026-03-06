@@ -4,6 +4,7 @@ import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, detectRe
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider, EmptyContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext } from './workarounds'
+import { registerLabelFormatter } from './labels'
 
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
@@ -134,12 +135,12 @@ export class TaskChangesProvider implements vscode.Disposable {
       baseUri  = EMPTY_URI
       rightUri = workUri
     } else if (status === 'D') {
-      baseUri  = makeBaseUri(root, ref, c.path.replace(/\\/g, '/'))
+      baseUri  = makeBaseUri(root, ref, c.path.replace(/\\/g, '/'), 'Deleted')
       rightUri = EMPTY_URI
     } else {
       // M or R — for renames the base side uses the old path
       const baseFp = (status === 'R' ? c.oldPath! : c.path).replace(/\\/g, '/')
-      baseUri  = makeBaseUri(root, ref, baseFp)
+      baseUri  = makeBaseUri(root, ref, baseFp, `since ${this.baseLabel}`)
       rightUri = workUri
     }
 
@@ -149,8 +150,10 @@ export class TaskChangesProvider implements vscode.Disposable {
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
       : status === 'A'
-        ? { title: 'Open file', command: 'vscode.open',              arguments: [workUri] }
-        : { title: 'Open diff', command: 'vscode.diff',              arguments: [baseUri, rightUri, diffTitle] }
+        ? { title: 'Open file', command: 'vscode.open', arguments: [workUri] }
+        : status === 'D'
+          ? { title: 'Open file', command: 'vscode.open', arguments: [baseUri] }
+          : { title: 'Open diff', command: 'vscode.diff', arguments: [baseUri, rightUri, diffTitle] }
 
     const decorations: vscode.SourceControlResourceDecorations = {
       strikeThrough: d.strikeThrough,
@@ -249,6 +252,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   const api = ext.exports.getAPI(1)
   setGitPath(api.git.path)
+  registerLabelFormatter(ctx)
 
   const content      = new BaseGitContentProvider()
   const decoProvider = new TaskChangesDecorationProvider()
