@@ -10,6 +10,8 @@ export interface BaseSelection {
   readonly prEnter?: { prevBranch: string; stashSha?: string }
   /** Set when exiting GitHub PR full review. Provider clears the persisted state. */
   readonly prExit?:  true
+  /** True when the PR base was already local and no fetch was performed — diff may be against a stale ref. */
+  readonly stale?:   boolean
 }
 
 export interface PrReviewState {
@@ -104,8 +106,10 @@ export async function resolvePr(
   const { baseRef, headSha } = meta
   const localBase = `origin/${baseRef}`
 
+  let fetched = false
   if (!await gitOrNull(root, 'rev-parse', '--verify', localBase)) {
     if (await gitOrNull(root, 'fetch', 'origin', baseRef) === null) return 'fetch-failed'
+    fetched = true
   }
 
   if (key === 'pr-review') {
@@ -127,7 +131,7 @@ export async function resolvePr(
     return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · PR changes`, type: 'PR' as const, prEnter: { prevBranch, stashSha } }
   }
 
-  return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · my work vs target`, type: 'PR' as const }
+  return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · my work vs target`, type: 'PR' as const, stale: !fetched }
 }
 
 export type ExitPrResult =
