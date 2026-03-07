@@ -164,12 +164,12 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - Expected label: `Commit · <sha>` (detectRefType resolves the SHA to `Commit`)
 - [Claude] verify stored ref equals the typed SHA
 
-**S07b · Enter ref — tag name (symbolic, unfrozen)**
+**S07b · Enter ref — tag name (frozen to SHA)**
 - Precondition: tag `v1.0` exists in the repo
 - [User] open picker → Enter ref… → type `v1.0`
 - Expected label: `Tag · v1.0` (`detectRefType` checks `refs/heads/v1.0` first (not found), then `refs/tags/v1.0` (found) → returns `'Tag'`)
-- [Claude] verify stored ref is the **symbolic name** `v1.0`, NOT the resolved SHA
-- Note: this is materially different from using the `Tag…` picker. The `Tag…` picker stores the resolved SHA (`picker.ts:214` uses `resolved` when `typeItem.key === 'tag'`), freezing the base permanently. `Enter ref…` stores the typed string (`ref = newRef` for `typeItem.key === 'ref'`), so the ref is symbolic — if the tag is deleted, the next refresh will fail with "base ref no longer exists" and trigger auto-recovery. The Tag… picker does not have this failure mode because the SHA always resolves as long as the commit is reachable.
+- [Claude] verify stored ref is the **resolved SHA**, NOT the symbolic name `v1.0`
+- Note: `Enter ref…` and the `Tag…` picker now behave identically for tag names — both freeze the base to the resolved SHA. This means if the tag is later deleted, the SHA remains reachable (as long as the commit is not garbage-collected) and the base stays valid.
 
 **S08 · Enter ref — invalid**
 - [User] open picker → Enter ref… → type `nonexistent-ref`

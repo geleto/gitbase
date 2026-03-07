@@ -221,15 +221,18 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
     return undefined
   }
 
-  // Branches: store symbolic name so the diff tracks tip movement.
-  // Tags & commits: store the full SHA so the diff is frozen.
-  // Enter ref: store as typed (SHA → frozen, branch name → tracks tip).
-  const ref   = (typeItem.key === 'branch' || typeItem.key === 'ref') ? newRef : resolved
   const label = newLabel ?? newRef
   const type  = typeItem.key === 'branch' ? 'Branch'
                : typeItem.key === 'tag'    ? 'Tag'
                : typeItem.key === 'commit' ? 'Commit'
                : await detectRefType(root, newRef)
+
+  // Branches: store symbolic name so the diff tracks tip movement.
+  // Tags & commits: store the full SHA so the diff is frozen.
+  // Enter ref: store as typed for branches/commits, but freeze tags to SHA so deletion doesn't break the base.
+  const ref   = typeItem.key === 'branch'                        ? newRef    // symbolic: tracks tip
+              : typeItem.key === 'ref' && type !== 'Tag'         ? newRef    // branch/commit: as typed
+              : resolved                                                      // tag or Tag… picker: frozen
 
   return { ref, label, type }
 }
