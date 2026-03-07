@@ -418,14 +418,15 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - Expected: notification `No changes to copy for <filename>` (the patch is empty; `gitOrNull` returned an empty string for that file)
 - Note: this is a transient race-window edge case; the list self-corrects on the next ~400ms refresh
 
-**S14 · Content provider shows informative message when `git show` fails**
-- Precondition: base is set to a branch; a file exists in the working tree that does NOT exist at the base ref (e.g. set base to a commit that predates the file's creation, so the file is shown as A in the SCM list but also appears as M because it has been modified since it was added)
-- Alternative setup: manually open a `basegit:` URI via the diff editor for a path that never existed at the base ref
-- [User] click an M file in the SCM list to open the diff editor
-- Expected: left side of diff editor shows a single line `(file did not exist at <ref>)` — `content.ts` runs `git show <ref>:<path>`, which fails; `gitOrNull` returns `null`; the fallback inserts the informative message instead of an empty string
+**S14 · Content provider shows fallback message when `git show` fails for a branch-based ref**
+- Precondition: base is set to a branch (e.g. `origin/main`); diff editor is open on a tracked `M` file showing base content on the left side
+- [Claude] delete the file from the base branch so `git show origin/main:<file>` fails: `git rm <file> && git commit -m "delete from base" && git push origin main`; then in the test repo: `git fetch origin`
+- [User] click the file in the SCM list (it appears as M since HEAD still has it, but `git show origin/main:<file>` now fails because the file was deleted from the base branch)
+- Expected: left side of diff editor shows `(file did not exist at origin/main)` — `git show` exits non-zero; the content provider substitutes the fallback string
 - Expected: right side shows the current working-tree content normally
-- [Claude] confirm by running `git show <base-ref>:<filepath>` and verifying it exits non-zero
-- Note: for SHA-based refs the message shows the short 8-char SHA (`ref.slice(0, 8)`); for branch/tag refs it shows the full ref name
+- [Claude] confirm: `git show origin/main:<filepath>` exits non-zero
+- Note: for SHA-based refs (e.g. a merge-base SHA) the fallback reads `(file did not exist at <8-char-sha>)`; for named refs it shows the full ref name.
+- [Reset] restore the file on `origin/main` and reset the test repo
 
 **S15 · Open File via inline icon on a binary A or M file**
 - Precondition: a binary file (e.g. a small PNG) appears as M or A in the SCM list (from FS-03 S06 setup or similar)
