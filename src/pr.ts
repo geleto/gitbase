@@ -119,13 +119,17 @@ export async function resolvePr(
 
 export type ExitPrResult =
   | { ok: true;  selection: BaseSelection; stashPopFailed: boolean }
-  | { ok: false }
+  | { ok: false; reason?: 'dirty' }
 
 /**
  * Checks out the previous branch and restores the stash.
  * No VS Code UI.
  */
 export async function exitPr(root: string, state: PrReviewState): Promise<ExitPrResult> {
+  const unstaged = await gitOrNull(root, 'diff', '--quiet')
+  const staged   = await gitOrNull(root, 'diff', '--cached', '--quiet')
+  if (unstaged === null || staged === null) return { ok: false, reason: 'dirty' }
+
   if (await gitOrNull(root, 'checkout', state.prevBranch) === null) return { ok: false }
 
   let stashPopFailed = false

@@ -54,7 +54,11 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
       () => exitPr(root, prReviewState)
     )
     if (!exitResult.ok) {
-      void vscode.window.showErrorMessage(`Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`)
+      if (exitResult.reason === 'dirty') {
+        void vscode.window.showWarningMessage('Stash or discard your changes before exiting GitHub PR Review.')
+      } else {
+        void vscode.window.showErrorMessage(`Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`)
+      }
       return undefined
     }
     if (exitResult.stashPopFailed) {
