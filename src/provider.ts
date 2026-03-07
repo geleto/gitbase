@@ -117,14 +117,8 @@ export class TaskChangesProvider implements vscode.Disposable {
       ])
       this.syncLabel()
       assertScmContext()
-      // Always notify — the stored base is gone.
-      void vscode.window.showWarningMessage(
-        `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
-        'Select Base',
-      ).then(action => {
-        if (action === 'Select Base') void vscode.commands.executeCommand('taskChanges.selectBase', this.scm)
-      })
-      // Independently try to auto-recover; if it works, the panel self-heals.
+
+      // Attempt auto-recovery BEFORE notifying, so notification wording matches outcome.
       const detected = await detectDefaultBranch(root)
       if (detected) {
         this.baseRef   = detected
@@ -137,9 +131,20 @@ export class TaskChangesProvider implements vscode.Disposable {
           this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  'Branch'),
         ])
         this.syncLabel()
+        // Inform, don't alarm — no action needed.
+        void vscode.window.showInformationMessage(
+          `GitBase: base ref "${ref}" was deleted; auto-recovered to ${detected}.`
+        )
         this.schedule()
       } else {
         this.autoDetectDone = false
+        // No recovery possible — user must act.
+        void vscode.window.showWarningMessage(
+          `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
+          'Select Base',
+        ).then(action => {
+          if (action === 'Select Base') void vscode.commands.executeCommand('taskChanges.selectBase', this.scm)
+        })
       }
       return
     }

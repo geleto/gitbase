@@ -536,18 +536,19 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - [User] reload VS Code window
 - Expected: same commit label shown (not just the SHA)
 
-**S03 · Deleted branch triggers warning**
+**S03 · Deleted branch triggers notification**
 - [Claude] `git branch -D feature/beta` and `git push origin --delete feature/beta`
 - Precondition: stored base is `feature/beta`
-- Expected: warning notification `GitBase: base ref "feature/beta" no longer exists. Select a new base to continue.`
-- Expected: `Select Base` button in the notification
-- Note: the warning notification and the auto-recovery (S04) are triggered in the same `run()` call without awaiting one another — they execute concurrently. Both effects are observable from a single extension refresh; S04 does not require a separate user action.
+- If `origin/main` (or other default) is detectable: expected info notification `GitBase: base ref "feature/beta" was deleted; auto-recovered to origin/main.` (no button). No user action needed; SCM label updates automatically. `Select Base` button is absent.
+- If no default is detectable: expected warning notification `GitBase: base ref "feature/beta" no longer exists. Select a new base to continue.` with `Select Base` button.
+- Note: auto-recovery now runs before the notification fires, so the notification wording matches the outcome.
 
 **S04 · Auto-recovery after deleted base**
-- Precondition: S03 completed (warning already shown; auto-recovery runs concurrently with it)
-- Expected: extension auto-recovers to `origin/main` (default branch) without user action
-- Expected: SCM label updates to `Branch · origin/main`
+- Precondition: S03 completed (auto-recovery succeeded; info notification was shown)
+- Expected: extension auto-recovered to `origin/main` (default branch) without user action
+- Expected: SCM label updated to `Branch · origin/main`
 - [Claude] verify stored base key updated to `origin/main`
+- Note: auto-recovery now runs before the notification fires. If recovery succeeds, an info notification (not a warning) is shown and the `Select Base` button is absent. S03 and S04 are now observable from the same refresh in all cases.
 
 **S04b · Auto-recovery fails when no default branch can be detected**
 - Precondition: stored base is a branch that has been deleted (as in S03); additionally, no default branch is detectable — no `origin/HEAD` symref, no `origin/main`, no `origin/master`, no upstream tracking branch (`detectDefaultBranch` returns `null`)
@@ -559,7 +560,7 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - [Reset] `git remote set-head origin -a && git branch --set-upstream-to=origin/main` to restore the default branch
 
 **S05 · Warning notification action**
-- [Claude] re-create the deleted base scenario
+- Precondition: a repo where `detectDefaultBranch` returns `null` (i.e. the warning-with-button path — no `origin/HEAD`, no `origin/main`, no `origin/master`, no upstream tracking branch); stored base is a branch that has been deleted
 - [User] click `Select Base` in the warning notification
 - Expected: picker opens
 
