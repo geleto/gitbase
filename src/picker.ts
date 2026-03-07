@@ -123,6 +123,13 @@ export async function pickBase(root: string): Promise<BaseSelection | undefined>
       }
     }
 
+    if (typeItem.key === 'pr-base') {
+      void vscode.window.showInformationMessage(
+        `Comparing your current branch to PR #${prNumber} base (${localBase}). ` +
+        `To see the exact PR changes, use "PR · full review…" instead.`
+      )
+    }
+
     return { ref: localBase, label: `PR #${prNumber} · ${owner}/${repo}`, type: 'Branch' }
   }
 
