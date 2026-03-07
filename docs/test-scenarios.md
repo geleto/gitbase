@@ -697,12 +697,13 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: repo A's SCM list updates to include the changed file; repo B's list is unaffected
 - Note: `taskChanges.refresh` calls `resolveProvider(sc)` (`extension.ts:90`). When invoked from the command palette (no `sc` argument), and `providers.size > 1`, it shows the same picker used by `taskChanges.selectBase`. When invoked via the SCM title bar `$(refresh)` button, `sc` is passed and the picker is skipped.
 
-**S07b · Nested repo layout — resource commands may resolve against wrong provider (known limitation)**
+**S07b · Nested repo layout — resource commands resolve against most-specific provider**
 - Precondition: two git repos open where one root is a path-prefix of the other — e.g. repo A at `/project` and repo B at `/project/packages/lib`. Both have at least one file in their GitBase diff lists.
 - Note: VS Code may not allow adding a subfolder of an already-open workspace folder via File → Add Folder to Workspace. This scenario may require opening VS Code with a multi-root `.code-workspace` file that lists both paths explicitly.
-- [Claude] right-click a file from repo B's GitBase SCM list → Copy Relative Path
-- Expected: path may be computed relative to **repo A's** root rather than repo B's root, because `resolveProviderForResource` (`extension.ts:79-83`) uses `Array.find()` over providers in Map-insertion order. If repo A was inserted first, its `startsWith(root + sep)` check matches repo B's files too (since `/project/` is a prefix of `/project/packages/lib/`), and repo A wins. Repo B only wins if it was inserted before repo A.
-- Note: this is a known limitation of the `startsWith` provider resolution. The most specific (longest-matching) provider is not always chosen. The same ambiguity affects `Copy Changes (Patch)`. Commands invoked via the SCM title bar (`sc` argument passed) bypass this issue entirely since they resolve by SCM object identity. Only resource-URI-based resolution (`resolveProviderForResource`) is affected.
+- [User] right-click a file from repo B's GitBase SCM list → Copy Relative Path
+- Expected: path is computed relative to **repo B's** root (the most-specific provider wins regardless of insertion order)
+- [Claude] verify: the copied path does not start with `packages/lib/` prefix that would indicate resolution against repo A
+- Note: `resolveProviderForResource` (`extension.ts`) sorts candidates by root-path length descending before `find()`, so the deepest (most-specific) matching repo always wins. The same correct resolution applies to `Copy Changes (Patch)`. Commands invoked via the SCM title bar (`sc` argument passed) bypass this path entirely since they resolve by SCM object identity.
 
 **S07 · Commands silently no-op when no repos are open**
 - Precondition: the extension is active (was activated with at least one repo) but all repos have been removed from the workspace (so `providers.size === 0`); this state is reached after performing FS-07 S05 and S06 and removing repo A as well

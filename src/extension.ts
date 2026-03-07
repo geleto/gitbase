@@ -76,11 +76,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   }
 
   // Helper: resolve the provider that owns the given resource URI.
+  // Sort by root path length descending so the most-specific (deepest) repo wins.
   function resolveProviderForResource(uri: vscode.Uri): TaskChangesProvider | undefined {
-    return [...providers.values()].find(p => {
-      const root = p.scm.rootUri?.fsPath
-      return root && (uri.fsPath === root || uri.fsPath.startsWith(root + nodePath.sep))
-    })
+    return [...providers.values()]
+      .sort((a, b) => (b.scm.rootUri?.fsPath.length ?? 0) - (a.scm.rootUri?.fsPath.length ?? 0))
+      .find(p => {
+        const root = p.scm.rootUri?.fsPath
+        return root && (uri.fsPath === root || uri.fsPath.startsWith(root + nodePath.sep))
+      })
   }
 
   ctx.subscriptions.push(
