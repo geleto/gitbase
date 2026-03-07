@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import * as nodePath from 'path'
-import { GitRepository, RawChange, gitOrNull, getMergeBase, detectDefaultBranch, detectRefType, parseNameStatus, parseBinarySet } from './git'
+import { GitRepository, RawChange, gitOrNull, getMergeBase, detectDefaultBranch, parseNameStatus, parseBinarySet } from './git'
+import { pickBase } from './picker'
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext } from './workarounds'
@@ -226,122 +227,17 @@ export class TaskChangesProvider implements vscode.Disposable {
   }
 
   async selectBase(): Promise<void> {
-    const root = this.repo.rootUri.fsPath
-
-    // Detect default branch for the one-click shortcut at the top of the picker.
-    const defaultBranch = await detectDefaultBranch(root)
-
-    type TypeItem = vscode.QuickPickItem & { key: string }
-    const typeItems: TypeItem[] = []
-    if (defaultBranch) {
-      typeItems.push({ label: 'Default branch', description: defaultBranch, key: 'default' })
-      typeItems.push({ label: '', kind: vscode.QuickPickItemKind.Separator, key: '' })
-    }
-    typeItems.push(
-      { label: 'Branch…',    key: 'branch' },
-      { label: 'Tag…',       key: 'tag'    },
-      { label: 'Commit…',    key: 'commit' },
-      { label: 'Enter ref…', key: 'ref'    },
-    )
-
-    const typeItem = await vscode.window.showQuickPick(typeItems, { placeHolder: 'Select base type' })
-    if (!typeItem) return
-
-    // Default branch: detectDefaultBranch already verified the ref, apply directly.
-    if (typeItem.key === 'default') {
-      this.baseRef   = defaultBranch!
-      this.baseLabel = defaultBranch!
-      this.baseType  = 'Branch'
-      await Promise.all([
-        this.ctx.workspaceState.update(`taskChanges.base.${root}`,      this.baseRef),
-        this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, this.baseLabel),
-        this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  this.baseType),
-      ])
-      this.syncLabel()
-      this.schedule()
-      return
-    }
-
-    let newRef:   string | undefined
-    let newLabel: string | undefined   // human-readable display name; defaults to newRef
-
-    if (typeItem.key === 'branch') {
-      const out = await gitOrNull(root, 'for-each-ref',
-        '--format=%(refname)\t%(refname:short)\t%(committerdate:relative)',
-        '--exclude=refs/remotes/*/HEAD', 'refs/heads/', 'refs/remotes/')
-
-      type BranchItem = vscode.QuickPickItem & { branch?: string }
-      const remotes: BranchItem[] = []
-      const locals:  BranchItem[] = []
-      for (const line of (out ?? '').split('\n').filter(Boolean)) {
-        const [fullRef, name, date] = line.split('\t')
-        const item: BranchItem = { label: name, description: date || undefined, branch: name }
-        if (fullRef.startsWith('refs/remotes/')) remotes.push(item)
-        else locals.push(item)
-      }
-
-      const items: BranchItem[] = []
-      if (remotes.length) {
-        items.push({ label: 'Upstream', kind: vscode.QuickPickItemKind.Separator })
-        items.push(...remotes)
-      }
-      if (locals.length) {
-        items.push({ label: 'Local', kind: vscode.QuickPickItemKind.Separator })
-        items.push(...locals)
-      }
-
-      const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select branch…' })
-      newRef = picked?.branch
-
-    } else if (typeItem.key === 'tag') {
-      const out = await gitOrNull(root, 'for-each-ref',
-        '--format=%(refname:short)\t%(creatordate:relative)', 'refs/tags/')
-      const items = (out ?? '').split('\n').filter(Boolean).map(line => {
-        const [name, date] = line.split('\t')
-        return { label: name, description: date || undefined }
-      })
-      newRef = (await vscode.window.showQuickPick(items, { placeHolder: 'Select tag…' }))?.label
-
-    } else if (typeItem.key === 'commit') {
-      const out = await gitOrNull(root, 'log', `--format=%H\x1f%s\x1f%ar`, '-50')
-      if (!out) return
-
-      interface CommitItem extends vscode.QuickPickItem { sha: string }
-      const items: CommitItem[] = out.trim().split('\n')
-        .filter(Boolean)
-        .map(line => {
-          const [sha, subject, date] = line.split('\x1f')
-          return { label: subject, description: `${sha.slice(0, 8)} · ${date}`, sha }
-        })
-
-      const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select commit…', matchOnDescription: true })
-      if (picked) { newRef = picked.sha; newLabel = picked.label }   // label = subject
-
-    } else {  // 'ref'
-      newRef = await vscode.window.showInputBox({ prompt: 'Enter a branch name, tag, or SHA' })
-    }
-
-    if (!newRef) return
-
-    const resolved = (await gitOrNull(root, 'rev-parse', '--verify', newRef))?.trim()
-    if (!resolved) {
-      void vscode.window.showErrorMessage(`Task Changes: "${newRef}" is not a valid Git ref.`)
-      return
-    }
-
-    // Branches: store symbolic name so the diff tracks tip movement.
-    // Tags & commits: store the full SHA so the diff is frozen.
-    // Enter ref: store as typed (SHA → frozen, branch name → tracks tip).
-    this.baseRef   = (typeItem.key === 'branch' || typeItem.key === 'ref') ? newRef : resolved
-    this.baseLabel = newLabel ?? newRef   // commits use subject; everything else uses the ref name
-    this.baseType  = typeItem.key === 'branch' ? 'Branch'
-                   : typeItem.key === 'tag'    ? 'Tag'
-                   : typeItem.key === 'commit' ? 'Commit'
-                   : await detectRefType(root, newRef)
-
-    await this.ctx.workspaceState.update(`taskChanges.base.${root}`,      this.baseRef)
-    await this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, this.baseLabel)
-    await this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  this.baseType)
+    const root   = this.repo.rootUri.fsPath
+    const picked = await pickBase(root)
+    if (!picked) return
+    this.baseRef   = picked.ref
+    this.baseLabel = picked.label
+    this.baseType  = picked.type
+    await Promise.all([
+      this.ctx.workspaceState.update(`taskChanges.base.${root}`,      picked.ref),
+      this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, picked.label),
+      this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  picked.type),
+    ])
     this.syncLabel()
     this.schedule()
   }
