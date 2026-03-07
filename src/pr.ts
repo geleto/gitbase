@@ -1,0 +1,141 @@
+import * as vscode from 'vscode'
+import * as https from 'https'
+import { gitOrNull } from './git'
+
+export interface BaseSelection {
+  readonly ref:      string
+  readonly label:    string
+  readonly type:     'Branch' | 'Tag' | 'Commit' | 'PR' | undefined
+  /** Set when entering GitHub PR full review. Provider fills in prevBase* before persisting. */
+  readonly prEnter?: { prevBranch: string; stashed: boolean }
+  /** Set when exiting GitHub PR full review. Provider clears the persisted state. */
+  readonly prExit?:  true
+}
+
+export interface PrReviewState {
+  readonly prevBranch:    string
+  readonly prevBase:      string
+  readonly prevBaseLabel: string
+  readonly prevBaseType:  'Branch' | 'Tag' | 'Commit' | undefined
+  readonly stashed:       boolean
+}
+
+type PrMetaResult = { baseRef: string; headSha: string } | 'auth-required' | undefined
+
+function fetchPrMeta(owner: string, repo: string, prNumber: number, token?: string): Promise<PrMetaResult> {
+  return new Promise(resolve => {
+    const req = https.get({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/pulls/${prNumber}`,
+      headers: {
+        'User-Agent': 'gitbase-vscode',
+        Accept: 'application/vnd.github.v3+json',
+        ...(token ? { Authorization: `token ${token}` } : {}),
+      },
+    }, res => {
+      if (res.statusCode === 401 || res.statusCode === 404) {
+        res.resume()
+        resolve('auth-required')
+        return
+      }
+      let data = ''
+      res.on('data', (chunk: string) => { data += chunk })
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data)
+          resolve(json.base?.ref && json.head?.sha
+            ? { baseRef: json.base.ref, headSha: json.head.sha }
+            : undefined)
+        } catch { resolve(undefined) }
+      })
+    })
+    req.on('error', () => resolve(undefined))
+  })
+}
+
+async function resolvePrMeta(
+  owner: string, repo: string, prNumber: number
+): Promise<{ baseRef: string; headSha: string } | undefined> {
+  // Try with a silent session first (no UI shown if not signed in).
+  let token: string | undefined
+  try {
+    token = (await vscode.authentication.getSession('github', ['repo'], { silent: true }))?.accessToken
+  } catch { /* no session */ }
+
+  let result = await fetchPrMeta(owner, repo, prNumber, token)
+
+  // On auth failure, prompt the user to sign in and retry once.
+  if (result === 'auth-required') {
+    try {
+      token = (await vscode.authentication.getSession('github', ['repo'], { createIfNone: true }))?.accessToken
+    } catch { return undefined }
+    result = await fetchPrMeta(owner, repo, prNumber, token)
+  }
+
+  return result === 'auth-required' ? undefined : result
+}
+
+/**
+ * Fetches PR metadata and performs the git operations for the selected mode.
+ * No VS Code UI except authentication prompts.
+ */
+export async function resolvePr(
+  root: string,
+  isDirty: boolean,
+  key: 'pr-base' | 'pr-review',
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<BaseSelection | 'checkout-failed' | undefined> {
+  const meta = await resolvePrMeta(owner, repo, prNumber)
+  if (!meta) return undefined
+
+  const { baseRef, headSha } = meta
+  const localBase = `origin/${baseRef}`
+
+  if (!await gitOrNull(root, 'rev-parse', '--verify', localBase)) {
+    await gitOrNull(root, 'fetch', 'origin', baseRef)
+  }
+
+  if (key === 'pr-review') {
+    const prevBranch = (await gitOrNull(root, 'symbolic-ref', '--short', 'HEAD'))?.trim() ?? 'HEAD'
+
+    let stashed = false
+    if (isDirty) {
+      stashed = await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: PR review') !== null
+    }
+
+    const fetched = await gitOrNull(root, 'fetch', 'origin', `refs/pull/${prNumber}/head`)
+    if (fetched === null || await gitOrNull(root, 'checkout', '--detach', headSha) === null) {
+      if (stashed) await gitOrNull(root, 'stash', 'pop')
+      return 'checkout-failed'
+    }
+
+    return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · PR changes`, type: 'PR' as const, prEnter: { prevBranch, stashed } }
+  }
+
+  return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · my work vs target`, type: 'PR' as const }
+}
+
+export type ExitPrResult =
+  | { ok: true;  selection: BaseSelection; stashPopFailed: boolean }
+  | { ok: false }
+
+/**
+ * Checks out the previous branch and restores the stash.
+ * No VS Code UI.
+ */
+export async function exitPr(root: string, state: PrReviewState): Promise<ExitPrResult> {
+  if (await gitOrNull(root, 'checkout', state.prevBranch) === null) return { ok: false }
+
+  let stashPopFailed = false
+  if (state.stashed) {
+    stashPopFailed = await gitOrNull(root, 'stash', 'pop') === null
+  }
+
+  return {
+    ok: true,
+    selection: { ref: state.prevBase, label: state.prevBaseLabel, type: state.prevBaseType, prExit: true },
+    stashPopFailed,
+  }
+}
