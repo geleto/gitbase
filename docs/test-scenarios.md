@@ -753,9 +753,9 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 
 **S04 · Valid URL format, non-existent PR**
 - [User] enter a well-formed URL with a PR number that does not exist
-- Expected: error message `Could not fetch PR #N from GitHub. Check the URL and your network connection.` is shown immediately, with no sign-in prompt, regardless of auth state
+- Expected: error message `PR #N was not found on GitHub. Check the PR number in the URL.` is shown immediately, with no sign-in prompt, regardless of auth state
 - [Claude] verify stored base unchanged
-- Note: HTTP 404 now resolves `'not-found'` (distinct from `'auth-required'`). `resolvePrMeta` treats `'not-found'` as an immediate hard stop — no auth retry is attempted. HTTP 401 still triggers the `createIfNone: true` auth-retry path. Network errors (`req.on('error')`) resolve `undefined` directly.
+- Note: HTTP 404 resolves `'not-found'` (distinct from `'auth-required'`). `resolvePrMeta` returns `'not-found'` which propagates through `resolvePr` and is handled in `picker.ts` with a targeted message. No auth retry is attempted. HTTP 401 still triggers the `createIfNone: true` auth-retry path. Network errors (`req.on('error')`) resolve `undefined` directly.
 
 **S05 · Base branch not yet fetched locally**
 - [Claude] `git remote prune origin` to remove any cached remote refs

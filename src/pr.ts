@@ -52,7 +52,7 @@ function fetchPrMeta(owner: string, repo: string, prNumber: number, token?: stri
 
 async function resolvePrMeta(
   owner: string, repo: string, prNumber: number
-): Promise<{ baseRef: string; headSha: string } | undefined> {
+): Promise<{ baseRef: string; headSha: string } | 'not-found' | undefined> {
   // Try with a silent session first (no UI shown if not signed in).
   let token: string | undefined
   try {
@@ -62,7 +62,7 @@ async function resolvePrMeta(
   let result = await fetchPrMeta(owner, repo, prNumber, token)
 
   // 404 means the PR doesn't exist — no point prompting for auth.
-  if (result === 'not-found') return undefined
+  if (result === 'not-found') return 'not-found'
 
   // On auth failure, prompt the user to sign in and retry once.
   if (result === 'auth-required') {
@@ -70,7 +70,7 @@ async function resolvePrMeta(
       token = (await vscode.authentication.getSession('github', ['repo'], { createIfNone: true }))?.accessToken
     } catch { return undefined }
     result = await fetchPrMeta(owner, repo, prNumber, token)
-    if (result === 'not-found') return undefined
+    if (result === 'not-found') return 'not-found'
   }
 
   return result === 'auth-required' ? undefined : result
@@ -95,8 +95,9 @@ export async function resolvePr(
   owner: string,
   repo: string,
   prNumber: number,
-): Promise<BaseSelection | 'checkout-failed' | 'checkout-failed-stash-left' | 'fetch-failed' | undefined> {
+): Promise<BaseSelection | 'checkout-failed' | 'checkout-failed-stash-left' | 'fetch-failed' | 'not-found' | undefined> {
   const meta = await resolvePrMeta(owner, repo, prNumber)
+  if (meta === 'not-found') return 'not-found'
   if (!meta) return undefined
 
   const { baseRef, headSha } = meta

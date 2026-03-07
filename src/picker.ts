@@ -121,6 +121,10 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
       () => resolvePr(root, isDirty, typeItem.key as 'pr-base' | 'pr-review', owner, repo, prNumber)
     )
 
+    if (result === 'not-found') {
+      void vscode.window.showErrorMessage(`PR #${prNumber} was not found on GitHub. Check the PR number in the URL.`)
+      return undefined
+    }
     if (result === undefined) {
       void vscode.window.showErrorMessage(`Could not fetch PR #${prNumber} from GitHub. Check the URL and your network connection.`)
       return undefined
