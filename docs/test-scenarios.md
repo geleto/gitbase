@@ -737,7 +737,7 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: progress notification `GitHub PR #N…`
 - Expected: no GitHub sign-in prompt appears (public repo)
 - Expected: SCM label: `GitHub PR #N · owner/repo · my work vs target`
-- Expected: info notification mentioning `"GitHub PR · PR changes…"` as the alternative
+- Expected: no info notification appears when the base is fresh — the SCM label change is the only feedback
 - [Claude] verify HEAD is unchanged (no checkout)
 - [Claude] verify `origin/<base-branch>` exists locally after fetch
 - [User] open picker again and confirm `← Exit GitHub PR Review` is **not** listed (pr-base mode does not set `prReviewState`; the exit item only appears after a `pr-review` entry)
@@ -801,7 +801,7 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: extension accepts the selection without fetching (the `if (!await gitOrNull(root, 'rev-parse', '--verify', localBase))` guard at `pr.ts:104` evaluates to false because `origin/main` already exists; the fetch block is skipped entirely)
 - [Claude] verify: `git rev-parse origin/main` still equals the stale SHA recorded above (no automatic fetch occurred)
 - Expected: the SCM diff is computed against the **stale** local `origin/main`, not the current remote tip — changes on the remote base branch since the last fetch are invisible to the diff
-- Expected: info notification `Diff is against your local origin/main (last fetched). Run git fetch to update.`
+- Expected: one info notification `Diff is against your local origin/main (last fetched). Run git fetch to update.` — this is the only notification shown (the advertising notification was removed)
 - [User] run `git fetch origin` in the terminal, then observe the SCM list update
 - Expected: after the fetch, the diff now reflects the current remote base branch; the SCM list may shrink (if base-branch commits merged features also in your branch) or expand
 - Note: the extension avoids fetching on every base selection to stay fast and offline-friendly. The stale notification informs the user without changing this behaviour.

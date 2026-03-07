@@ -188,9 +188,7 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
           `Diff is against your local ${result.ref} (last fetched). Run git fetch to update.`
         )
       }
-      void vscode.window.showInformationMessage(
-        `Base set to PR #${prNumber} target (${result.ref}). For the exact PR diff, use "GitHub PR · PR changes…".`
-      )
+      // Advertising notification removed — the picker already shows both PR options.
     }
 
     return result
