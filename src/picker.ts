@@ -64,7 +64,36 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
     )
     if (!exitResult.ok) {
       if (exitResult.reason === 'dirty') {
-        void vscode.window.showWarningMessage('Stash or discard your changes before exiting GitHub PR Review.')
+        const action = await vscode.window.showWarningMessage(
+          'You have uncommitted changes. Stash them and exit PR review?',
+          'Stash and Exit', 'Cancel'
+        )
+        if (action !== 'Stash and Exit') return undefined
+        await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: exit stash')
+        const retry = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'Exiting GitHub PR Review…', cancellable: false },
+          () => exitPr(root, prReviewState)
+        )
+        if (!retry.ok) {
+          const act = await vscode.window.showErrorMessage(
+            `Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`,
+            'Force Exit'
+          )
+          if (act === 'Force Exit') {
+            return { ref: prReviewState.prevBase, label: prReviewState.prevBaseLabel, type: prReviewState.prevBaseType, prExit: true }
+          }
+          return undefined
+        }
+        if (retry.stashPopFailed) {
+          void vscode.window.showWarningMessage(
+            'Your stashed changes could not be restored automatically — they are still safe in the stash. ' +
+            'Run "git stash pop" to apply them; if there are conflicts, resolve them then run "git stash drop".',
+            'Copy command'
+          ).then(act => {
+            if (act === 'Copy command') void vscode.env.clipboard.writeText('git stash pop')
+          })
+        }
+        return retry.selection
       } else {
         const action = await vscode.window.showErrorMessage(
           `Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`,

@@ -877,13 +877,14 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: SCM label reverts to `Branch · origin/main` (or whatever prevBase was)
 - Expected: `← Exit GitHub PR Review` no longer appears in picker
 
-**S04 · Exit blocked by dirty working tree**
+**S04 · Exit with dirty working tree — offer Stash and Exit**
 - Precondition: in PR review mode (from S01 or S02)
 - [Claude] create a dirty working tree while in detached HEAD: `echo "review edit" >> README.md`
 - [User] open picker → `← Exit GitHub PR Review`
-- Expected: warning `Stash or discard your changes before exiting GitHub PR Review`
-- Expected: still in PR review mode (exit item still present)
-- [Claude] verify HEAD is still detached at PR SHA
+- Expected: warning message `You have uncommitted changes. Stash them and exit PR review?` with buttons `Stash and Exit` and `Cancel`
+- Clicking `Cancel`: no change, still in PR review mode (exit item still present); HEAD still detached at PR SHA
+- Clicking `Stash and Exit`: stashes the edits (`gitbase: exit stash`), exits cleanly to the previous branch; any edits made during review are stashed and available via `git stash pop`
+- [Claude] after clicking `Stash and Exit`: verify HEAD is back on previous branch and `git stash list` contains the exit stash
 
 **S05 · Detached commits warning on exit**
 - Precondition: in PR review mode; user has committed a change in detached HEAD
