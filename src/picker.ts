@@ -261,7 +261,7 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
 
   const resolved = (await gitOrNull(root, 'rev-parse', '--verify', newRef))?.trim()
   if (!resolved) {
-    void vscode.window.showErrorMessage(`Task Changes: "${newRef}" is not a valid Git ref.`)
+    void vscode.window.showErrorMessage(`GitBase: "${newRef}" is not a valid Git ref.`)
     return undefined
   }
 

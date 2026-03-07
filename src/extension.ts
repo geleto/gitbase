@@ -15,7 +15,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   providers.clear()
   const ext = vscode.extensions.getExtension<GitExtension>('vscode.git')
   if (!ext) {
-    vscode.window.showErrorMessage('Task Changes: VS Code Git extension not found. Extension disabled.')
+    vscode.window.showErrorMessage('GitBase: VS Code Git extension not found. Extension disabled.')
     return
   }
   if (!ext.isActive) await ext.activate()

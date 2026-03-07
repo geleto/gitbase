@@ -96,7 +96,7 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 **S04 · Git extension unavailable — extension disables itself gracefully**
 - Precondition: the VS Code built-in `vscode.git` extension is disabled (go to Extensions view → search "Git" → find the built-in "Git" extension → Disable)
 - [User] open VS Code on the test repo with the GitBase extension installed
-- Expected: error notification `Task Changes: VS Code Git extension not found. Extension disabled.`
+- Expected: error notification `GitBase: VS Code Git extension not found. Extension disabled.`
 - Expected: no GitBase Changes panel appears in the SCM view
 - Expected: no crash, no unhandled exceptions
 - [User] re-enable the built-in Git extension (`Extensions: Enable` in the command palette or via the Extensions view)
@@ -175,7 +175,7 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 
 **S08 · Enter ref — invalid**
 - [User] open picker → Enter ref… → type `nonexistent-ref`
-- Expected: error message `Task Changes: "nonexistent-ref" is not a valid Git ref.`
+- Expected: error message `GitBase: "nonexistent-ref" is not a valid Git ref.`
 - [Claude] verify stored base unchanged
 
 **S09 · Cancel picker**
