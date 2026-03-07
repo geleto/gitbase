@@ -198,11 +198,12 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - Expected: the staged file appears in the GitBase diff list
 - Note: `git diff <ref> --` compares the working tree (including staged content) to the ref, so staged changes are visible even when the ref is a branch
 
-**S13 · Enter ref — remote branch name classified as Commit**
+**S13 · Enter ref — remote branch name classified as Branch**
 - [User] open picker → Enter ref… → type `origin/feature/alpha`
-- Expected label: `Commit · origin/feature/alpha`
-- [Claude] verify stored ref is `origin/feature/alpha` and stored type is `Commit`
-- Note: `detectRefType` checks `refs/heads/<ref>` then `refs/tags/<ref>` only; remote refs (`refs/remotes/`) are not checked, so any remote branch typed here falls through to `'Commit'`. This is a known limitation — use the Branch… picker to select a remote branch with the correct `Branch` type.
+- Expected label: `Branch · origin/feature/alpha`
+- [Claude] verify stored ref is `origin/feature/alpha` and stored type is `Branch`
+- Expected: merge-base logic applies (same as selecting from the Branch… picker)
+- Note: `detectRefType` now checks `refs/remotes/<ref>` after `refs/heads/` and `refs/tags/`, so remote branch names like `origin/feature/alpha` are correctly classified as `'Branch'` rather than falling through to `'Commit'`.
 
 **S14 · Default branch item absent when no default can be detected**
 - Precondition: a repo with no `origin/HEAD`, no `origin/main`, no `origin/master`, and no upstream tracking branch (so `detectDefaultBranch` returns `null`)

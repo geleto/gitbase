@@ -81,8 +81,9 @@ export async function detectDefaultBranch(root: string): Promise<string | null> 
 }
 
 export async function detectRefType(root: string, ref: string): Promise<'Branch' | 'Tag' | 'Commit'> {
-  if (await gitOrNull(root, 'show-ref', '--verify', `refs/heads/${ref}`)) return 'Branch'
-  if (await gitOrNull(root, 'show-ref', '--verify', `refs/tags/${ref}`))  return 'Tag'
+  if (await gitOrNull(root, 'show-ref', '--verify', `refs/heads/${ref}`))   return 'Branch'
+  if (await gitOrNull(root, 'show-ref', '--verify', `refs/tags/${ref}`))    return 'Tag'
+  if (await gitOrNull(root, 'show-ref', '--verify', `refs/remotes/${ref}`)) return 'Branch'
   return 'Commit'
 }
 
