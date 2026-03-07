@@ -41,7 +41,7 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
     { label: '', kind: vscode.QuickPickItemKind.Separator, key: '' },
     { label: 'GitHub PR · my work vs target…',   description: 'compare current branch to PR base', key: 'pr-base'   },
     { label: isDirty ? 'GitHub PR · PR changes… (will stash)' : 'GitHub PR · PR changes…',
-      description: 'compare PR to its base', key: 'pr-review' },
+      description: prReviewState ? 'exit current review first' : 'compare PR to its base', key: 'pr-review' },
   )
 
   const typeItem = await vscode.window.showQuickPick(typeItems, { placeHolder: 'Select base type' })

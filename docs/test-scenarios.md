@@ -940,11 +940,14 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 
 **S12 · Attempt to enter PR review while already in PR review (blocked)**
 - Precondition: in PR review mode for PR #A (HEAD is detached at PR A's SHA)
-- [User] open picker → `GitHub PR · PR changes…` → (do not enter a URL yet)
+- [User] open picker (do not select anything yet)
+- Expected: `GitHub PR · PR changes…` item shows description `exit current review first` (inline signal visible before selecting)
+- Expected: `← Exit GitHub PR Review` is visible at the top of the picker, making the constraint self-explanatory
+- [User] select `GitHub PR · PR changes…`
 - Expected: warning notification `Already in GitHub PR Review. Exit the current review first before starting a new one.`
 - Expected: HEAD is unchanged (still detached at PR A's SHA)
 - Expected: `prReviewState` is unchanged; `← Exit GitHub PR Review` still appears at the top of the picker
-- Note: the guard at `picker.ts` fires immediately when `typeItem.key === 'pr-review' && prReviewState` is truthy, before any URL input box is shown. Users must exit the current PR review before entering a new one.
+- Note: the description change surfaces the constraint before the item is selected; the post-selection warning guard at `picker.ts` is retained as a safety net.
 
 **S13 · Re-enter same PR**
 - Precondition: exited PR review normally (S03)
