@@ -851,7 +851,7 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - [Claude] remove the untracked file: `rm orphan.txt`
 - Note: `isDirty = false` for untracked-only state, so no stash is created and the exit item description shows `return to feature/alpha` (no `· pop stash`). Untracked files are neither stashed nor cleaned — they persist transparently across the checkout.
 
-**S02c · Staged-only dirty state — stashed but restored as unstaged**
+**S02c · Staged-only dirty state — stashed and restored as staged**
 - Precondition: one file staged but working tree otherwise matches HEAD (e.g. `echo staged-change >> README.md && git add README.md`), on `feature/alpha`
 - [User] open picker — item label shows `GitHub PR · PR changes… (will stash)` (staged changes satisfy `isDirty`)
 - [User] select `GitHub PR · PR changes… (will stash)` → enter PR URL
@@ -859,8 +859,8 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - [Claude] verify `git status` shows the working tree is clean (staged change is stashed)
 - [User] open picker → `← Exit GitHub PR Review`
 - [Claude] verify HEAD is back on `feature/alpha`; `git stash list` is empty
-- [Claude] run `git status` and confirm the previously-staged change is now in the **working tree** (unstaged), NOT in the index
-- Note: `git stash push` captures the index state (staged content is included in the stash). However, `popStashBySha` calls `git stash pop` **without** `--index`. Without `--index`, git applies all stashed content into the working tree, collapsing the staged/unstaged distinction. The change is restored but loses its staged status. This is a known behavior difference from what the user might expect.
+- [Claude] run `git status` and confirm the previously-staged change is in the **index** (staged), not the working tree only
+- Note: `popStashBySha` calls `git stash pop --index`, which restores staged content back to the index, preserving the original staged/unstaged distinction.
 
 **S03 · Exit — restore stash to working tree**
 - Precondition: S02 completed (in PR review, stash present)

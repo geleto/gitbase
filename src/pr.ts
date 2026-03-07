@@ -81,7 +81,7 @@ async function popStashBySha(root: string, sha: string): Promise<boolean> {
   const list = await gitOrNull(root, 'stash', 'list', '--format=%H')
   const idx  = (list ?? '').split('\n').filter(Boolean).indexOf(sha)
   if (idx < 0) return true   // already gone — nothing to pop
-  return await gitOrNull(root, 'stash', 'pop', `stash@{${idx}}`) !== null
+  return await gitOrNull(root, 'stash', 'pop', '--index', `stash@{${idx}}`) !== null
 }
 
 /**
