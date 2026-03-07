@@ -800,14 +800,13 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: after the fetch, the diff now reflects the current remote base branch; the SCM list may shrink (if base-branch commits merged features also in your branch) or expand
 - Note: this is intentional behavior — the extension avoids fetching on every base selection to stay fast and offline-friendly. Users who need the latest base must fetch manually (or wait for their normal fetch cycle).
 
-**S11 · Base-branch fetch failure produces a deferred missing-base error**
+**S11 · Base-branch fetch failure produces an immediate error**
 - Precondition: GitHub API returns valid PR metadata (baseRef, headSha) but `origin/<baseRef>` does not exist locally and the fetch will fail (e.g. simulate by temporarily removing `origin` remote after the metadata call, or by pointing `origin` at a repo that is reachable for HTTPS but lacks the branch; alternatively reproduce by manually deleting the remote ref and blocking network access)
 - [User] enter a valid PR URL using `GitHub PR · my work vs target…`
-- Expected: the picker closes and the SCM label updates to `GitHub PR #N · … · my work vs target` (no immediate error — `resolvePr` returns `ref: origin/<baseRef>` regardless of fetch success; `pr.ts:104-106` silently discards the fetch result)
-- Expected: on the next provider refresh (~400ms), the base ref validation fails (`git rev-parse --verify origin/<baseRef>` exits non-zero because the ref was never fetched) and the warning notification `GitBase: base ref "origin/<baseRef>" no longer exists. Select a new base to continue.` appears
-- Expected: extension auto-recovers to the default branch (or shows the "Select a new base" button if auto-detect also fails)
-- [Claude] verify after the recovery: `git rev-parse --verify origin/<baseRef>` exits non-zero confirming the ref was never populated
-- Note: `pr.ts:105` calls `gitOrNull(root, 'fetch', 'origin', baseRef)` but does not check its return value. A failed fetch is silently ignored and `origin/<baseRef>` is returned anyway. The missing-base recovery in `provider.ts:run()` is the first code that detects the problem.
+- Expected: the picker does NOT close with a success label. Instead, an error notification `Could not fetch base branch from origin. Check your network connection.` appears immediately
+- Expected: stored base is unchanged (no label update, no deferred missing-base warning)
+- [Claude] verify: `git rev-parse --verify origin/<baseRef>` exits non-zero confirming the ref was never populated
+- Note: `resolvePr` now checks the return value of the fetch. A failed fetch returns the `'fetch-failed'` sentinel, which `picker.ts` handles immediately with an error message and `return undefined`.
 
 ---
 

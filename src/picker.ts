@@ -125,6 +125,12 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
       void vscode.window.showErrorMessage(`Could not fetch PR #${prNumber} from GitHub. Check the URL and your network connection.`)
       return undefined
     }
+    if (result === 'fetch-failed') {
+      void vscode.window.showErrorMessage(
+        `Could not fetch base branch from origin. Check your network connection.`
+      )
+      return undefined
+    }
     if (result === 'checkout-failed' || result === 'checkout-failed-stash-left') {
       void vscode.window.showErrorMessage(`Failed to switch to PR #${prNumber}. Ensure origin points to GitHub.`)
       if (result === 'checkout-failed-stash-left') {
