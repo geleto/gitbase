@@ -220,7 +220,8 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - [User] open picker → Enter ref… → type `v1.0`
 - Expected label: `Branch · v1.0` (NOT `Tag · v1.0`)
 - Expected stored type: `Branch`
-- Note: `detectRefType` checks `refs/heads/v1.0` first (`git.ts:84`). When that succeeds, it returns `'Branch'` immediately without checking `refs/tags/`. This means a branch named `v1.0` silently shadows the tag of the same name. The label says `Branch`, merge-base logic applies (same as selecting a branch), and the diff tracks branch tip movement — none of which is what the user intended if they wanted the tag. The disambiguation precedence (branch before tag) is a fixed code behavior; users who want the tag in an ambiguous repo must use the `Tag…` picker.
+- Expected: warning notification `"v1.0" matches both a branch and a tag. Treating as branch. Use the Tag… picker to select the tag.`
+- Note: `detectRefType` checks `refs/heads/v1.0` first (`git.ts:84`). When that succeeds, it additionally checks `refs/tags/v1.0` and returns `{ type: 'Branch', shadowed: 'tag' }` when both exist. The caller in `picker.ts` shows the warning notification but still returns `Branch` (precedence unchanged). Users who want the tag must use the `Tag…` picker.
 - [Reset] `git branch -D v1.0` to remove the ambiguous branch
 
 **S16 · Empty Tag picker behaves like cancel**

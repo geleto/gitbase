@@ -80,11 +80,14 @@ export async function detectDefaultBranch(root: string): Promise<string | null> 
   return upstream || null
 }
 
-export async function detectRefType(root: string, ref: string): Promise<'Branch' | 'Tag' | 'Commit'> {
-  if (await gitOrNull(root, 'show-ref', '--verify', `refs/heads/${ref}`))   return 'Branch'
-  if (await gitOrNull(root, 'show-ref', '--verify', `refs/tags/${ref}`))    return 'Tag'
-  if (await gitOrNull(root, 'show-ref', '--verify', `refs/remotes/${ref}`)) return 'Branch'
-  return 'Commit'
+export async function detectRefType(root: string, ref: string): Promise<{ type: 'Branch' | 'Tag' | 'Commit'; shadowed?: 'tag' }> {
+  if (await gitOrNull(root, 'show-ref', '--verify', `refs/heads/${ref}`)) {
+    const shadowedByTag = await gitOrNull(root, 'show-ref', '--verify', `refs/tags/${ref}`)
+    return { type: 'Branch', shadowed: shadowedByTag ? 'tag' : undefined }
+  }
+  if (await gitOrNull(root, 'show-ref', '--verify', `refs/tags/${ref}`))    return { type: 'Tag' }
+  if (await gitOrNull(root, 'show-ref', '--verify', `refs/remotes/${ref}`)) return { type: 'Branch' }
+  return { type: 'Commit' }
 }
 
 // ── Parsing ───────────────────────────────────────────────────────────────────

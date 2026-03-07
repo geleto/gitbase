@@ -232,10 +232,22 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
   }
 
   const label = newLabel ?? newRef
-  const type  = typeItem.key === 'branch' ? 'Branch'
-               : typeItem.key === 'tag'    ? 'Tag'
-               : typeItem.key === 'commit' ? 'Commit'
-               : await detectRefType(root, newRef)
+  let type: 'Branch' | 'Tag' | 'Commit'
+  if (typeItem.key === 'branch') {
+    type = 'Branch'
+  } else if (typeItem.key === 'tag') {
+    type = 'Tag'
+  } else if (typeItem.key === 'commit') {
+    type = 'Commit'
+  } else {
+    const detected = await detectRefType(root, newRef)
+    type = detected.type
+    if (detected.shadowed === 'tag') {
+      void vscode.window.showWarningMessage(
+        `"${newRef}" matches both a branch and a tag. Treating as branch. Use the Tag… picker to select the tag.`
+      )
+    }
+  }
 
   // Branches: store symbolic name so the diff tracks tip movement.
   // Tags & commits: store the full SHA so the diff is frozen.
