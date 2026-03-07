@@ -415,14 +415,14 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - Expected: notification `No changes to copy for <filename>` (the patch is empty; `gitOrNull` returned an empty string for that file)
 - Note: this is a transient race-window edge case; the list self-corrects on the next ~400ms refresh
 
-**S14 · Content provider returns empty document when `git show` fails**
+**S14 · Content provider shows informative message when `git show` fails**
 - Precondition: base is set to a branch; a file exists in the working tree that does NOT exist at the base ref (e.g. set base to a commit that predates the file's creation, so the file is shown as A in the SCM list but also appears as M because it has been modified since it was added)
 - Alternative setup: manually open a `basegit:` URI via the diff editor for a path that never existed at the base ref
 - [User] click an M file in the SCM list to open the diff editor
-- Expected: left side of diff editor is blank (empty document) — `content.ts` runs `git show <ref>:<path>`, which fails because the path did not exist at that ref; `gitOrNull` returns `null`; the `?? ''` fallback yields an empty string; no error is thrown or shown
+- Expected: left side of diff editor shows a single line `(file did not exist at <ref>)` — `content.ts` runs `git show <ref>:<path>`, which fails; `gitOrNull` returns `null`; the fallback inserts the informative message instead of an empty string
 - Expected: right side shows the current working-tree content normally
 - [Claude] confirm by running `git show <base-ref>:<filepath>` and verifying it exits non-zero
-- Note: this is the silent-empty fallback at `content.ts:49` and `content.ts:60`; if this behavior is ever changed to show an error instead, this scenario must be updated
+- Note: for SHA-based refs the message shows the short 8-char SHA (`ref.slice(0, 8)`); for branch/tag refs it shows the full ref name
 
 **S15 · Open File via inline icon on a binary A or M file**
 - Precondition: a binary file (e.g. a small PNG) appears as M or A in the SCM list (from FS-03 S06 setup or similar)

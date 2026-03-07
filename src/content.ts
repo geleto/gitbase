@@ -46,7 +46,8 @@ export class BaseGitContentProvider implements vscode.TextDocumentContentProvide
     if (isSha(ref)) {
       const key = `${root}\0${ref}\0${fp}`
       if (!this.shaCache.has(key)) {
-        this.shaCache.set(key, await gitOrNull(root, 'show', `${ref}:${fp}`) ?? '')
+        const raw = await gitOrNull(root, 'show', `${ref}:${fp}`)
+        this.shaCache.set(key, raw ?? `(file did not exist at ${ref.slice(0, 8)})`)
       }
       return this.shaCache.get(key)!
     }
@@ -56,7 +57,8 @@ export class BaseGitContentProvider implements vscode.TextDocumentContentProvide
     const entry = this.branchCaches.get(bkey)
     if (!entry) return ''
     if (!entry.files.has(fp)) {
-      entry.files.set(fp, await gitOrNull(root, 'show', `${ref}:${fp}`) ?? '')
+      const raw = await gitOrNull(root, 'show', `${ref}:${fp}`)
+      entry.files.set(fp, raw ?? `(file did not exist at ${ref})`)
     }
     return entry.files.get(fp)!
   }
