@@ -194,9 +194,26 @@ export class TaskChangesProvider implements vscode.Disposable {
     let newLabel: string | undefined   // human-readable display name; defaults to newRef
 
     if (typeItem === 'Branch…') {
-      const out   = await gitOrNull(root, 'for-each-ref', '--format=%(refname:short)', '--exclude=refs/remotes/*/HEAD', 'refs/heads/', 'refs/remotes/')
-      const items = (out ?? '').split('\n').map(s => s.trim()).filter(Boolean)
-      newRef = await vscode.window.showQuickPick(items, { placeHolder: 'Select branch…', matchOnDescription: true })
+      const [remoteOut, localOut] = await Promise.all([
+        gitOrNull(root, 'for-each-ref', '--format=%(refname:short)', '--exclude=refs/remotes/*/HEAD', 'refs/remotes/'),
+        gitOrNull(root, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/'),
+      ])
+      const remotes = (remoteOut ?? '').split('\n').map(s => s.trim()).filter(Boolean)
+      const locals  = (localOut  ?? '').split('\n').map(s => s.trim()).filter(Boolean)
+
+      type BranchItem = vscode.QuickPickItem & { branch?: string }
+      const items: BranchItem[] = []
+      if (remotes.length) {
+        items.push({ label: 'Upstream', kind: vscode.QuickPickItemKind.Separator })
+        items.push(...remotes.map(b => ({ label: b, branch: b })))
+      }
+      if (locals.length) {
+        items.push({ label: 'Local', kind: vscode.QuickPickItemKind.Separator })
+        items.push(...locals.map(b => ({ label: b, branch: b })))
+      }
+
+      const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select branch…' })
+      newRef = picked?.branch
 
     } else if (typeItem === 'Tag…') {
       const out   = await gitOrNull(root, 'tag', '--sort=-version:refname')
