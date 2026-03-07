@@ -80,6 +80,12 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
             'Force Exit'
           )
           if (act === 'Force Exit') {
+            void vscode.window.showWarningMessage(
+              'Your stashed changes are saved as "gitbase: exit stash". Run "git stash pop" to recover them.',
+              'Copy command'
+            ).then(a => {
+              if (a === 'Copy command') void vscode.env.clipboard.writeText('git stash pop')
+            })
             return { ref: prReviewState.prevBase, label: prReviewState.prevBaseLabel, type: prReviewState.prevBaseType, prExit: true }
           }
           return undefined

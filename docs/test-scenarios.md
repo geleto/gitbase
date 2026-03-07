@@ -918,6 +918,18 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: label reverts to prevBase
 - [Claude] verify still on current branch (wherever they were), no crash
 
+**S08b · Force Exit after Stash-and-Exit retry failure discloses the exit stash**
+- Precondition: in PR review mode with a dirty working tree; prevBranch deleted while in review
+- [Claude] make a working-tree edit in detached HEAD: `echo "review edit" >> README.md`
+- [User] open picker → `← Exit GitHub PR Review`
+- Expected: warning `You have uncommitted changes. Stash them and exit PR review?` → click `Stash and Exit`
+- [Claude] verify `git stash list` now contains `gitbase: exit stash`
+- Expected: second error `Failed to restore previous branch. Run "git checkout feature/alpha" manually.` (prevBranch was deleted)
+- [User] click `Force Exit`
+- Expected: additional warning `Your stashed changes are saved as "gitbase: exit stash". Run "git stash pop" to recover them.` with `Copy command` button
+- [Claude] verify `git stash list` still contains the exit stash entry
+- [Reset] `git stash drop` to clean up; re-create `feature/alpha` for subsequent scenarios
+
 **S09 · Stash popped by SHA, not by position**
 - Precondition: in PR review mode with stash (S02)
 - [Claude] push an unrelated stash on top: `git stash push -m "unrelated"`
