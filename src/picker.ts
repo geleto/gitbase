@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { gitOrNull, detectDefaultBranch, detectRefType } from './git'
-import { BaseSelection, PrReviewState, resolvePr, exitPr } from './pr'
+import { BaseSelection, PrReviewState, resolvePr, exitPr, countDetachedCommits } from './pr'
 
 export { BaseSelection, PrReviewState }
 
@@ -22,7 +22,7 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
 
   // Exit item appears at the very top when in PR review mode.
   if (prReviewState) {
-    const exitDesc = prReviewState.stashed
+    const exitDesc = prReviewState.stashSha
       ? `return to ${prReviewState.prevBranch} · pop stash`
       : `return to ${prReviewState.prevBranch}`
     typeItems.push({ label: '← Exit GitHub PR Review', description: exitDesc, key: 'pr-exit' })
@@ -49,6 +49,15 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
 
   // ── Exit GitHub PR Review ────────────────────────────────────────────────────
   if (typeItem.key === 'pr-exit' && prReviewState) {
+    const detached = await countDetachedCommits(root)
+    if (detached > 0) {
+      const action = await vscode.window.showWarningMessage(
+        `You have ${detached} unpublished commit${detached === 1 ? '' : 's'} in detached HEAD that will become unreachable after exit. Create a branch to keep them.`,
+        'Exit Anyway', 'Cancel'
+      )
+      if (action !== 'Exit Anyway') return undefined
+    }
+
     const exitResult = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Exiting GitHub PR Review…', cancellable: false },
       () => exitPr(root, prReviewState)
@@ -57,7 +66,13 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
       if (exitResult.reason === 'dirty') {
         void vscode.window.showWarningMessage('Stash or discard your changes before exiting GitHub PR Review.')
       } else {
-        void vscode.window.showErrorMessage(`Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`)
+        const action = await vscode.window.showErrorMessage(
+          `Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`,
+          'Force Exit'
+        )
+        if (action === 'Force Exit') {
+          return { ref: prReviewState.prevBase, label: prReviewState.prevBaseLabel, type: prReviewState.prevBaseType, prExit: true }
+        }
       }
       return undefined
     }

@@ -20,7 +20,8 @@
       "Bash(powershell.exe -Command \":*)",
       "Bash(powershell.exe -Command \"$pkg = Get-Content ''C:\\\\Users\\\\gelet\\\\AppData\\\\Local\\\\Programs\\\\Microsoft VS Code\\\\0870c2a0c7\\\\resources\\\\app\\\\extensions\\\\git\\\\package.json'' -Raw | ConvertFrom-Json; $pkg.contributes.menus | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name\")",
       "Bash(powershell.exe -Command \"& { $p = ''C:\\\\Users\\\\gelet\\\\AppData\\\\Local\\\\Programs\\\\Microsoft VS Code\\\\0870c2a0c7\\\\resources\\\\app\\\\extensions\\\\git\\\\package.json''; $j = Get-Content $p -Raw | ConvertFrom-Json; $j.contributes.menus | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name }\")",
-      "Bash(powershell.exe -File:*)"
+      "Bash(powershell.exe -File:*)",
+      "Bash(npx tsc --noEmit)"
     ]
   }
 }

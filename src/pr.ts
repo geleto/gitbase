@@ -7,7 +7,7 @@ export interface BaseSelection {
   readonly label:    string
   readonly type:     'Branch' | 'Tag' | 'Commit' | 'PR' | undefined
   /** Set when entering GitHub PR full review. Provider fills in prevBase* before persisting. */
-  readonly prEnter?: { prevBranch: string; stashed: boolean }
+  readonly prEnter?: { prevBranch: string; stashSha?: string }
   /** Set when exiting GitHub PR full review. Provider clears the persisted state. */
   readonly prExit?:  true
 }
@@ -17,7 +17,7 @@ export interface PrReviewState {
   readonly prevBase:      string
   readonly prevBaseLabel: string
   readonly prevBaseType:  'Branch' | 'Tag' | 'Commit' | undefined
-  readonly stashed:       boolean
+  readonly stashSha?:     string
 }
 
 type PrMetaResult = { baseRef: string; headSha: string } | 'auth-required' | undefined
@@ -75,6 +75,14 @@ async function resolvePrMeta(
   return result === 'auth-required' ? undefined : result
 }
 
+/** Finds a stash entry by SHA and pops it. Returns true on success or if not found (already gone). */
+async function popStashBySha(root: string, sha: string): Promise<boolean> {
+  const list = await gitOrNull(root, 'stash', 'list', '--format=%H')
+  const idx  = (list ?? '').split('\n').filter(Boolean).indexOf(sha)
+  if (idx < 0) return true   // already gone — nothing to pop
+  return await gitOrNull(root, 'stash', 'pop', `stash@{${idx}}`) !== null
+}
+
 /**
  * Fetches PR metadata and performs the git operations for the selected mode.
  * No VS Code UI except authentication prompts.
@@ -100,18 +108,20 @@ export async function resolvePr(
   if (key === 'pr-review') {
     const prevBranch = (await gitOrNull(root, 'symbolic-ref', '--short', 'HEAD'))?.trim() ?? 'HEAD'
 
-    let stashed = false
+    let stashSha: string | undefined
     if (isDirty) {
-      stashed = await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: PR review') !== null
+      if (await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: PR review') !== null) {
+        stashSha = (await gitOrNull(root, 'rev-parse', 'stash@{0}'))?.trim() ?? undefined
+      }
     }
 
     const fetched = await gitOrNull(root, 'fetch', 'origin', `refs/pull/${prNumber}/head`)
     if (fetched === null || await gitOrNull(root, 'checkout', '--detach', headSha) === null) {
-      if (stashed && await gitOrNull(root, 'stash', 'pop') === null) return 'checkout-failed-stash-left'
+      if (stashSha && !await popStashBySha(root, stashSha)) return 'checkout-failed-stash-left'
       return 'checkout-failed'
     }
 
-    return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · PR changes`, type: 'PR' as const, prEnter: { prevBranch, stashed } }
+    return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · PR changes`, type: 'PR' as const, prEnter: { prevBranch, stashSha } }
   }
 
   return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · my work vs target`, type: 'PR' as const }
@@ -133,8 +143,8 @@ export async function exitPr(root: string, state: PrReviewState): Promise<ExitPr
   if (await gitOrNull(root, 'checkout', state.prevBranch) === null) return { ok: false }
 
   let stashPopFailed = false
-  if (state.stashed) {
-    stashPopFailed = await gitOrNull(root, 'stash', 'pop') === null
+  if (state.stashSha) {
+    stashPopFailed = !await popStashBySha(root, state.stashSha)
   }
 
   return {
@@ -142,4 +152,10 @@ export async function exitPr(root: string, state: PrReviewState): Promise<ExitPr
     selection: { ref: state.prevBase, label: state.prevBaseLabel, type: state.prevBaseType, prExit: true },
     stashPopFailed,
   }
+}
+
+/** Returns the number of commits reachable from HEAD but not from any local branch (detached HEAD commits). */
+export async function countDetachedCommits(root: string): Promise<number> {
+  const out = await gitOrNull(root, 'log', 'HEAD', '--not', '--branches', '--oneline')
+  return out ? out.trim().split('\n').filter(Boolean).length : 0
 }
