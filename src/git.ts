@@ -49,6 +49,31 @@ export async function getMergeBase(root: string, ref1: string, ref2: string): Pr
   return (await gitOrNull(root, 'merge-base', ref1, ref2))?.trim() ?? null
 }
 
+export async function detectDefaultBranch(root: string): Promise<string | null> {
+  // Capture tracking branch upfront — used as last resort if nothing better is found.
+  const upstream = (await gitOrNull(root, 'rev-parse', '--abbrev-ref', 'HEAD@{upstream}'))?.trim()
+
+  // 1. If there's a tracking branch, try to resolve that remote's symbolic HEAD (the true default).
+  let triedOriginHead = false
+  if (upstream) {
+    const remote = upstream.split('/')[0]
+    const symref = (await gitOrNull(root, 'symbolic-ref', '--short', `refs/remotes/${remote}/HEAD`))?.trim()
+    if (symref && await gitOrNull(root, 'show-ref', '--verify', `refs/remotes/${symref}`)) return symref
+    if (remote === 'origin') triedOriginHead = true
+  }
+  // 2. Try origin/HEAD directly — skip if already attempted in step 1.
+  if (!triedOriginHead) {
+    const originHead = (await gitOrNull(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'))?.trim()
+    if (originHead && await gitOrNull(root, 'show-ref', '--verify', `refs/remotes/${originHead}`)) return originHead
+  }
+  // 3. Try common default branch names.
+  for (const candidate of ['origin/main', 'origin/master']) {
+    if (await gitOrNull(root, 'show-ref', '--verify', `refs/remotes/${candidate}`)) return candidate
+  }
+  // 4. Last resort: use the tracking branch itself.
+  return upstream || null
+}
+
 export async function detectRefType(root: string, ref: string): Promise<'Branch' | 'Tag' | 'Commit'> {
   if (await gitOrNull(root, 'show-ref', '--verify', `refs/heads/${ref}`)) return 'Branch'
   if (await gitOrNull(root, 'show-ref', '--verify', `refs/tags/${ref}`))  return 'Tag'

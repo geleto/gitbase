@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import * as nodePath from 'path'
-import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, getMergeBase, detectRefType, parseNameStatus, parseBinarySet } from './git'
+import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, getMergeBase, detectDefaultBranch, detectRefType, parseNameStatus, parseBinarySet } from './git'
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider, EmptyContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext, openWithoutAutoReveal } from './workarounds'
@@ -15,12 +15,13 @@ export class TaskChangesProvider implements vscode.Disposable {
   private readonly group: vscode.SourceControlResourceGroup
   private readonly subs: vscode.Disposable[] = []
 
-  private baseRef   = 'HEAD'
-  private baseLabel = 'HEAD'
+  private baseRef         = 'HEAD'
+  private baseLabel       = 'HEAD'
   private baseType: 'Branch' | 'Tag' | 'Commit' | undefined = undefined
-  private running  = false
-  private dirty    = false
-  private disposed = false
+  private autoDetectDone  = false
+  private running         = false
+  private dirty           = false
+  private disposed        = false
   private timer: ReturnType<typeof setTimeout> | undefined
 
   constructor(
@@ -79,7 +80,25 @@ export class TaskChangesProvider implements vscode.Disposable {
 
   private async run(): Promise<void> {
     const root = this.repo.rootUri.fsPath
-    const ref  = this.baseRef
+
+    // On first run with no stored base, auto-detect the upstream default branch.
+    if (this.baseRef === 'HEAD' && !this.autoDetectDone) {
+      this.autoDetectDone = true
+      const detected = await detectDefaultBranch(root)
+      if (detected) {
+        this.baseRef   = detected
+        this.baseLabel = detected
+        this.baseType  = 'Branch'
+        await Promise.all([
+          this.ctx.workspaceState.update(`taskChanges.base.${root}`,      detected),
+          this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, detected),
+          this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  'Branch'),
+        ])
+        this.syncLabel()
+      }
+    }
+
+    const ref = this.baseRef
 
     // Validate ref (HEAD is always resolvable; skip to avoid spurious warning on unborn repos)
     const ok = ref === 'HEAD' || await gitOrNull(root, 'rev-parse', '--verify', ref)
@@ -89,17 +108,37 @@ export class TaskChangesProvider implements vscode.Disposable {
       this.baseRef   = 'HEAD'
       this.baseLabel = 'HEAD'
       this.baseType  = undefined
-      await this.ctx.workspaceState.update(`taskChanges.base.${root}`,      undefined)
-      await this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, undefined)
-      await this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  undefined)
+      await Promise.all([
+        this.ctx.workspaceState.update(`taskChanges.base.${root}`,      undefined),
+        this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, undefined),
+        this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  undefined),
+      ])
       this.syncLabel()
       assertScmContext()
+      // Always notify — the stored base is gone.
       void vscode.window.showWarningMessage(
         `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
         'Select Base',
       ).then(action => {
         if (action === 'Select Base') void vscode.commands.executeCommand('taskChanges.selectBase', this.scm)
       })
+      // Independently try to auto-recover; if it works, the panel self-heals.
+      const detected = await detectDefaultBranch(root)
+      if (detected) {
+        this.baseRef   = detected
+        this.baseLabel = detected
+        this.baseType  = 'Branch'
+        this.autoDetectDone = true
+        await Promise.all([
+          this.ctx.workspaceState.update(`taskChanges.base.${root}`,      detected),
+          this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, detected),
+          this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  'Branch'),
+        ])
+        this.syncLabel()
+        this.schedule()
+      } else {
+        this.autoDetectDone = false
+      }
       return
     }
 
@@ -108,7 +147,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     // For branches, diff against the merge base so only our changes are shown,
     // not diverging commits on the base branch.
     let diffRef = ref
-    if (this.baseType === 'Branch' && ref !== 'HEAD') {
+    if (this.baseType === 'Branch') {
       const mb = await getMergeBase(root, 'HEAD', ref)
       if (mb) diffRef = mb
     }
