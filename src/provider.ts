@@ -228,16 +228,44 @@ export class TaskChangesProvider implements vscode.Disposable {
   async selectBase(): Promise<void> {
     const root = this.repo.rootUri.fsPath
 
-    const typeItem = await vscode.window.showQuickPick(
-      ['Branch…', 'Tag…', 'Commit…', 'Enter ref…'],
-      { placeHolder: 'Select base type' },
+    // Detect default branch for the one-click shortcut at the top of the picker.
+    const defaultBranch = await detectDefaultBranch(root)
+
+    type TypeItem = vscode.QuickPickItem & { key: string }
+    const typeItems: TypeItem[] = []
+    if (defaultBranch) {
+      typeItems.push({ label: 'Default branch', description: defaultBranch, key: 'default' })
+      typeItems.push({ label: '', kind: vscode.QuickPickItemKind.Separator, key: '' })
+    }
+    typeItems.push(
+      { label: 'Branch…',    key: 'branch' },
+      { label: 'Tag…',       key: 'tag'    },
+      { label: 'Commit…',    key: 'commit' },
+      { label: 'Enter ref…', key: 'ref'    },
     )
+
+    const typeItem = await vscode.window.showQuickPick(typeItems, { placeHolder: 'Select base type' })
     if (!typeItem) return
+
+    // Default branch: detectDefaultBranch already verified the ref, apply directly.
+    if (typeItem.key === 'default') {
+      this.baseRef   = defaultBranch!
+      this.baseLabel = defaultBranch!
+      this.baseType  = 'Branch'
+      await Promise.all([
+        this.ctx.workspaceState.update(`taskChanges.base.${root}`,      this.baseRef),
+        this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, this.baseLabel),
+        this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  this.baseType),
+      ])
+      this.syncLabel()
+      this.schedule()
+      return
+    }
 
     let newRef:   string | undefined
     let newLabel: string | undefined   // human-readable display name; defaults to newRef
 
-    if (typeItem === 'Branch…') {
+    if (typeItem.key === 'branch') {
       const out = await gitOrNull(root, 'for-each-ref',
         '--format=%(refname)\t%(refname:short)\t%(committerdate:relative)',
         '--exclude=refs/remotes/*/HEAD', 'refs/heads/', 'refs/remotes/')
@@ -265,7 +293,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select branch…' })
       newRef = picked?.branch
 
-    } else if (typeItem === 'Tag…') {
+    } else if (typeItem.key === 'tag') {
       const out = await gitOrNull(root, 'for-each-ref',
         '--format=%(refname:short)\t%(creatordate:relative)', 'refs/tags/')
       const items = (out ?? '').split('\n').filter(Boolean).map(line => {
@@ -274,7 +302,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       })
       newRef = (await vscode.window.showQuickPick(items, { placeHolder: 'Select tag…' }))?.label
 
-    } else if (typeItem === 'Commit…') {
+    } else if (typeItem.key === 'commit') {
       const out = await gitOrNull(root, 'log', `--format=%H\x1f%s\x1f%ar`, '-50')
       if (!out) return
 
@@ -289,7 +317,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select commit…', matchOnDescription: true })
       if (picked) { newRef = picked.sha; newLabel = picked.label }   // label = subject
 
-    } else {
+    } else {  // 'ref'
       newRef = await vscode.window.showInputBox({ prompt: 'Enter a branch name, tag, or SHA' })
     }
 
@@ -304,11 +332,11 @@ export class TaskChangesProvider implements vscode.Disposable {
     // Branches: store symbolic name so the diff tracks tip movement.
     // Tags & commits: store the full SHA so the diff is frozen.
     // Enter ref: store as typed (SHA → frozen, branch name → tracks tip).
-    this.baseRef   = (typeItem === 'Branch…' || typeItem === 'Enter ref…') ? newRef : resolved
+    this.baseRef   = (typeItem.key === 'branch' || typeItem.key === 'ref') ? newRef : resolved
     this.baseLabel = newLabel ?? newRef   // commits use subject; everything else uses the ref name
-    this.baseType  = typeItem === 'Branch…' ? 'Branch'
-                   : typeItem === 'Tag…'    ? 'Tag'
-                   : typeItem === 'Commit…' ? 'Commit'
+    this.baseType  = typeItem.key === 'branch' ? 'Branch'
+                   : typeItem.key === 'tag'    ? 'Tag'
+                   : typeItem.key === 'commit' ? 'Commit'
                    : await detectRefType(root, newRef)
 
     await this.ctx.workspaceState.update(`taskChanges.base.${root}`,      this.baseRef)
