@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import * as nodePath from 'path'
-import { GitExtension, GitRepository, RefType, RawChange, setGitPath, gitOrNull, getMergeBase, detectDefaultBranch, detectRefType, parseNameStatus, parseBinarySet } from './git'
+import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, getMergeBase, detectDefaultBranch, detectRefType, parseNameStatus, parseBinarySet } from './git'
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider, EmptyContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext, openWithoutAutoReveal } from './workarounds'
@@ -237,28 +237,41 @@ export class TaskChangesProvider implements vscode.Disposable {
     let newLabel: string | undefined   // human-readable display name; defaults to newRef
 
     if (typeItem === 'Branch…') {
-      const refs    = await this.repo.getRefs()
-      const remotes = refs.filter(r => r.type === RefType.RemoteHead && r.name && !r.name.endsWith('/HEAD')).map(r => r.name!)
-      const locals  = refs.filter(r => r.type === RefType.Head      && r.name).map(r => r.name!)
+      const out = await gitOrNull(root, 'for-each-ref',
+        '--format=%(refname)\t%(refname:short)\t%(committerdate:relative)',
+        '--exclude=refs/remotes/*/HEAD', 'refs/heads/', 'refs/remotes/')
 
       type BranchItem = vscode.QuickPickItem & { branch?: string }
+      const remotes: BranchItem[] = []
+      const locals:  BranchItem[] = []
+      for (const line of (out ?? '').split('\n').filter(Boolean)) {
+        const [fullRef, name, date] = line.split('\t')
+        const item: BranchItem = { label: name, description: date || undefined, branch: name }
+        if (fullRef.startsWith('refs/remotes/')) remotes.push(item)
+        else locals.push(item)
+      }
+
       const items: BranchItem[] = []
       if (remotes.length) {
         items.push({ label: 'Upstream', kind: vscode.QuickPickItemKind.Separator })
-        items.push(...remotes.map(b => ({ label: b, branch: b })))
+        items.push(...remotes)
       }
       if (locals.length) {
         items.push({ label: 'Local', kind: vscode.QuickPickItemKind.Separator })
-        items.push(...locals.map(b => ({ label: b, branch: b })))
+        items.push(...locals)
       }
 
       const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select branch…' })
       newRef = picked?.branch
 
     } else if (typeItem === 'Tag…') {
-      const refs  = await this.repo.getRefs()
-      const items = refs.filter(r => r.type === RefType.Tag && r.name).map(r => r.name!)
-      newRef = await vscode.window.showQuickPick(items, { placeHolder: 'Select tag…' })
+      const out = await gitOrNull(root, 'for-each-ref',
+        '--format=%(refname:short)\t%(creatordate:relative)', 'refs/tags/')
+      const items = (out ?? '').split('\n').filter(Boolean).map(line => {
+        const [name, date] = line.split('\t')
+        return { label: name, description: date || undefined }
+      })
+      newRef = (await vscode.window.showQuickPick(items, { placeHolder: 'Select tag…' }))?.label
 
     } else if (typeItem === 'Commit…') {
       const out = await gitOrNull(root, 'log', `--format=%H\x1f%s\x1f%ar`, '-50')
