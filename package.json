@@ -27,6 +27,21 @@
         "title": "Open File",
         "icon": "$(go-to-file)",
         "category": "Task Changes"
+      },
+      {
+        "command": "taskChanges.copyPath",
+        "title": "Copy Path",
+        "category": "Task Changes"
+      },
+      {
+        "command": "taskChanges.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Task Changes"
+      },
+      {
+        "command": "taskChanges.copyPatch",
+        "title": "Copy Changes (Patch)",
+        "category": "Task Changes"
       }
     ],
     "menus": {
@@ -42,6 +57,21 @@
           "command": "taskChanges.openFile",
           "when": "scmProvider == taskchanges && scmResourceState != D",
           "group": "inline@1"
+        },
+        {
+          "command": "taskChanges.copyPath",
+          "when": "scmProvider == taskchanges",
+          "group": "3_copy@1"
+        },
+        {
+          "command": "taskChanges.copyRelativePath",
+          "when": "scmProvider == taskchanges",
+          "group": "3_copy@2"
+        },
+        {
+          "command": "taskChanges.copyPatch",
+          "when": "scmProvider == taskchanges && scmResourceState != U",
+          "group": "3_copy@3"
         }
       ],
       "scm/title": [

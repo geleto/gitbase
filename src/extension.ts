@@ -20,6 +20,7 @@ export class TaskChangesProvider implements vscode.Disposable {
   private baseType: 'Branch' | 'Tag' | 'Commit' | undefined = undefined
   private autoDetectDone  = false
   private running         = false
+  lastDiffRef             = 'HEAD'
   private dirty           = false
   private disposed        = false
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -151,6 +152,7 @@ export class TaskChangesProvider implements vscode.Disposable {
       const mb = await getMergeBase(root, 'HEAD', ref)
       if (mb) diffRef = mb
     }
+    this.lastDiffRef = diffRef
 
     // Refresh stat cache so files that were only touched (timestamp changed, content unchanged)
     // don't show up as spurious diff entries. Errors are intentionally ignored.
@@ -409,6 +411,38 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     }),
     vscode.commands.registerCommand('taskChanges.binaryNotice', (filePath: string) => {
       void vscode.window.showInformationMessage(`Binary file: ${nodePath.basename(filePath)} — diff not available.`)
+    }),
+    vscode.commands.registerCommand('taskChanges.copyPath', (resource: vscode.SourceControlResourceState) => {
+      if (!resource?.resourceUri) return
+      const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
+      void vscode.env.clipboard.writeText(uri.fsPath)
+    }),
+    vscode.commands.registerCommand('taskChanges.copyRelativePath', (resource: vscode.SourceControlResourceState) => {
+      if (!resource?.resourceUri) return
+      const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
+      const provider = [...providers.values()].find(p => {
+        const root = p.scm.rootUri?.fsPath
+        return root && (uri.fsPath === root || uri.fsPath.startsWith(root + nodePath.sep))
+      })
+      void vscode.env.clipboard.writeText(nodePath.relative(provider?.scm.rootUri?.fsPath ?? '', uri.fsPath))
+    }),
+    vscode.commands.registerCommand('taskChanges.copyPatch', async (resource: vscode.SourceControlResourceState) => {
+      if (!resource?.resourceUri) return
+      const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
+      const provider = [...providers.values()].find(p => {
+        const root = p.scm.rootUri?.fsPath
+        return root && (uri.fsPath === root || uri.fsPath.startsWith(root + nodePath.sep))
+      })
+      if (!provider) return
+      const root = provider.scm.rootUri!.fsPath
+      const fp   = nodePath.relative(root, uri.fsPath).replace(/\\/g, '/')
+      const patch = await gitOrNull(root, 'diff', provider.lastDiffRef, '--', fp)
+      if (patch) {
+        await vscode.env.clipboard.writeText(patch)
+        void vscode.window.showInformationMessage(`Patch copied for ${nodePath.basename(uri.fsPath)}`)
+      } else {
+        void vscode.window.showInformationMessage(`No changes to copy for ${nodePath.basename(uri.fsPath)}`)
+      }
     }),
   )
 }
