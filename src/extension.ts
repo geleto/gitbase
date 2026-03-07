@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import * as nodePath from 'path'
-import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, getMergeBase, detectDefaultBranch, detectRefType, parseNameStatus, parseBinarySet } from './git'
+import { GitExtension, GitRepository, RefType, RawChange, setGitPath, gitOrNull, getMergeBase, detectDefaultBranch, detectRefType, parseNameStatus, parseBinarySet } from './git'
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider, EmptyContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext, openWithoutAutoReveal } from './workarounds'
@@ -233,12 +233,9 @@ export class TaskChangesProvider implements vscode.Disposable {
     let newLabel: string | undefined   // human-readable display name; defaults to newRef
 
     if (typeItem === 'Branch…') {
-      const [remoteOut, localOut] = await Promise.all([
-        gitOrNull(root, 'for-each-ref', '--format=%(refname:short)', '--exclude=refs/remotes/*/HEAD', 'refs/remotes/'),
-        gitOrNull(root, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/'),
-      ])
-      const remotes = (remoteOut ?? '').split('\n').map(s => s.trim()).filter(Boolean)
-      const locals  = (localOut  ?? '').split('\n').map(s => s.trim()).filter(Boolean)
+      const refs    = await this.repo.getRefs()
+      const remotes = refs.filter(r => r.type === RefType.RemoteHead && r.name && !r.name.endsWith('/HEAD')).map(r => r.name!)
+      const locals  = refs.filter(r => r.type === RefType.Head      && r.name).map(r => r.name!)
 
       type BranchItem = vscode.QuickPickItem & { branch?: string }
       const items: BranchItem[] = []
@@ -255,9 +252,9 @@ export class TaskChangesProvider implements vscode.Disposable {
       newRef = picked?.branch
 
     } else if (typeItem === 'Tag…') {
-      const out   = await gitOrNull(root, 'tag', '--sort=-version:refname')
-      const items = (out ?? '').split('\n').map(s => s.trim()).filter(Boolean)
-      newRef = await vscode.window.showQuickPick(items, { placeHolder: 'Select tag…', matchOnDescription: true })
+      const refs  = await this.repo.getRefs()
+      const items = refs.filter(r => r.type === RefType.Tag && r.name).map(r => r.name!)
+      newRef = await vscode.window.showQuickPick(items, { placeHolder: 'Select tag…' })
 
     } else if (typeItem === 'Commit…') {
       const out = await gitOrNull(root, 'log', `--format=%H\x1f%s\x1f%ar`, '-50')

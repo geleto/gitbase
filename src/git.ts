@@ -13,9 +13,13 @@ export interface GitAPI {
   readonly onDidOpenRepository: vscode.Event<GitRepository>
   readonly onDidCloseRepository: vscode.Event<GitRepository>
 }
+export const enum RefType { Head = 0, RemoteHead = 1, Tag = 2 }
+export interface GitRef { readonly type: RefType; readonly name?: string }
+
 export interface GitRepository {
   readonly rootUri: vscode.Uri
   readonly state: { readonly onDidChange: vscode.Event<void> }
+  getRefs(query?: { sort?: string }): Promise<GitRef[]>
 }
 
 // ── Git helpers ───────────────────────────────────────────────────────────────
