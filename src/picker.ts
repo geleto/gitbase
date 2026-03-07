@@ -281,6 +281,12 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
         `"${newRef}" matches both a branch and a tag. Treating as branch. Use the Tag… picker to select the tag.`
       )
     }
+    // For commit SHAs entered via Enter ref…, resolve the subject so the label
+    // is human-readable (mirrors what the Commit picker does).
+    if (type === 'Commit' && !newLabel) {
+      const subject = (await gitOrNull(root, 'log', '-1', '--format=%s', newRef))?.trim()
+      if (subject) newLabel = subject
+    }
   }
 
   // Branches: store symbolic name so the diff tracks tip movement.

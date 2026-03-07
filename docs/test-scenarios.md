@@ -151,7 +151,7 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - Expected: the target commit does NOT appear in the list (only the 50 most recent are shown; `picker.ts:185` passes `-50` to `git log`)
 - Expected: a greyed footer label reads `Showing 50 most recent — use Enter ref… to set an older commit` — the truncation is now visible in the UI; the user no longer needs to discover the limit by noticing a commit is absent
 - [User] press Escape; then open picker → Enter ref… → paste the SHA
-- Expected label: `Commit · <sha>` (detectRefType falls through to `'Commit'` for a SHA)
+- Expected label: `Commit · <subject>` (Enter ref… resolves the commit subject; the stored ref is the full 40-char SHA)
 - [Claude] verify stored ref equals the pasted SHA
 - Note: this is the only way to set a base older than the picker depth. The 50-commit limit is a fixed design choice (`picker.ts:185`); there is no pagination or search for older commits.
 
@@ -163,7 +163,7 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 **S07 · Enter ref — SHA**
 - [Claude] print a known commit SHA: `git rev-parse HEAD~1`
 - [User] open picker → Enter ref… → paste the SHA Claude just printed
-- Expected label: `Commit · <sha>` (detectRefType resolves the SHA to `Commit`)
+- Expected label: `Commit · <subject>` (the commit's one-line subject; Enter ref… with a SHA now resolves the commit subject and uses it as the label, matching the behaviour of the Commit picker. The stored ref is still the full 40-char SHA.)
 - [Claude] verify stored ref equals the typed SHA
 
 **S07b · Enter ref — tag name (frozen to SHA)**
