@@ -9,6 +9,8 @@ const execFile = util.promisify(cp.execFile)
 export interface GitExtension { getAPI(version: 1): GitAPI }
 export interface GitAPI {
   readonly git: { path: string }
+  readonly state: 'uninitialized' | 'initialized'
+  readonly onDidChangeState: vscode.Event<'uninitialized' | 'initialized'>
   readonly repositories: GitRepository[]
   readonly onDidOpenRepository: vscode.Event<GitRepository>
   readonly onDidCloseRepository: vscode.Event<GitRepository>

@@ -41,8 +41,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     ctx.subscriptions.push(p)
   }
 
-  api.repositories.forEach(addRepo)
+  // onDidOpenRepository handles repos opened after initialization (e.g. multi-root).
+  // For the initial scan we must wait for state === 'initialized'; otherwise
+  // api.repositories can be empty when vscode.git fires onDidOpenRepository
+  // during its own activate() — before we have a chance to register the listener.
   ctx.subscriptions.push(api.onDidOpenRepository(addRepo))
+  if (api.state === 'initialized') {
+    api.repositories.forEach(addRepo)
+  } else {
+    ctx.subscriptions.push(api.onDidChangeState(state => {
+      if (state === 'initialized') api.repositories.forEach(addRepo)
+    }))
+  }
   ctx.subscriptions.push(
     api.onDidCloseRepository(repo => {
       const p = providers.get(repo.rootUri.fsPath)
