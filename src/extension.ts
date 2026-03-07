@@ -152,6 +152,10 @@ export class TaskChangesProvider implements vscode.Disposable {
       if (mb) diffRef = mb
     }
 
+    // Refresh stat cache so files that were only touched (timestamp changed, content unchanged)
+    // don't show up as spurious diff entries. Errors are intentionally ignored.
+    await gitOrNull(root, 'update-index', '--refresh', '-q')
+
     const [nsOut, numOut, dirtyOut, untrackedOut] = await Promise.all([
       gitOrNull(root, 'diff', '--name-status', '-z', diffRef, '--'),
       gitOrNull(root, 'diff', '--numstat',     '-z', diffRef, '--'),
