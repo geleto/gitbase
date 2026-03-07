@@ -752,12 +752,9 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 
 **S04 · Valid URL format, non-existent PR**
 - [User] enter a well-formed URL with a PR number that does not exist
-- Note: the behavior differs depending on whether the user is already authenticated with GitHub:
-  - **Signed in:** the first request returns HTTP 404 → `auth-required` → `createIfNone: true` returns the existing session without UI → retry returns HTTP 404 again → `undefined` → error shown immediately
-  - **Not signed in:** the first request returns HTTP 404 → `auth-required` → `createIfNone: true` **prompts GitHub sign-in** → user signs in → retry returns HTTP 404 → `undefined` → error shown after sign-in completes
-- Expected (both cases): error message `Could not fetch PR #N from GitHub. Check the URL and your network connection.`
+- Expected: error message `Could not fetch PR #N from GitHub. Check the URL and your network connection.` is shown immediately, with no sign-in prompt, regardless of auth state
 - [Claude] verify stored base unchanged
-- Note: HTTP 404 and HTTP 401 are treated identically by `fetchPrMeta` (both resolve `'auth-required'`), so a non-existent PR triggers the same auth-retry path as an auth failure. Network errors (`req.on('error')`) resolve `undefined` directly, bypassing the auth-retry path.
+- Note: HTTP 404 now resolves `'not-found'` (distinct from `'auth-required'`). `resolvePrMeta` treats `'not-found'` as an immediate hard stop — no auth retry is attempted. HTTP 401 still triggers the `createIfNone: true` auth-retry path. Network errors (`req.on('error')`) resolve `undefined` directly.
 
 **S05 · Base branch not yet fetched locally**
 - [Claude] `git remote prune origin` to remove any cached remote refs

@@ -20,7 +20,7 @@ export interface PrReviewState {
   readonly stashSha?:     string
 }
 
-type PrMetaResult = { baseRef: string; headSha: string } | 'auth-required' | undefined
+type PrMetaResult = { baseRef: string; headSha: string } | 'auth-required' | 'not-found' | undefined
 
 function fetchPrMeta(owner: string, repo: string, prNumber: number, token?: string): Promise<PrMetaResult> {
   return new Promise(resolve => {
@@ -33,11 +33,8 @@ function fetchPrMeta(owner: string, repo: string, prNumber: number, token?: stri
         ...(token ? { Authorization: `token ${token}` } : {}),
       },
     }, res => {
-      if (res.statusCode === 401 || res.statusCode === 404) {
-        res.resume()
-        resolve('auth-required')
-        return
-      }
+      if (res.statusCode === 401) { res.resume(); resolve('auth-required'); return }
+      if (res.statusCode === 404) { res.resume(); resolve('not-found');     return }
       let data = ''
       res.on('data', (chunk: string) => { data += chunk })
       res.on('end', () => {
@@ -64,12 +61,16 @@ async function resolvePrMeta(
 
   let result = await fetchPrMeta(owner, repo, prNumber, token)
 
+  // 404 means the PR doesn't exist — no point prompting for auth.
+  if (result === 'not-found') return undefined
+
   // On auth failure, prompt the user to sign in and retry once.
   if (result === 'auth-required') {
     try {
       token = (await vscode.authentication.getSession('github', ['repo'], { createIfNone: true }))?.accessToken
     } catch { return undefined }
     result = await fetchPrMeta(owner, repo, prNumber, token)
+    if (result === 'not-found') return undefined
   }
 
   return result === 'auth-required' ? undefined : result
