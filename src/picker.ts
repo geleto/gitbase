@@ -3,20 +3,26 @@ import * as https from 'https'
 import { gitOrNull, detectDefaultBranch, detectRefType } from './git'
 
 export interface BaseSelection {
-  readonly ref:   string
-  readonly label: string
-  readonly type:  'Branch' | 'Tag' | 'Commit' | undefined
+  readonly ref:      string
+  readonly label:    string
+  readonly type:     'Branch' | 'Tag' | 'Commit' | 'PR' | undefined
+  /** Set when entering GitHub PR full review. Provider fills in prevBase* before persisting. */
+  readonly prEnter?: { prevBranch: string; stashed: boolean }
+  /** Set when exiting GitHub PR full review. Provider clears the persisted state. */
+  readonly prExit?:  true
 }
 
-async function resolvePrMeta(
-  owner: string, repo: string, prNumber: number
-): Promise<{ baseRef: string; headSha: string } | undefined> {
-  let token: string | undefined
-  try {
-    const session = await vscode.authentication.getSession('github', ['repo'], { silent: true })
-    token = session?.accessToken
-  } catch { /* no GitHub auth available */ }
+export interface PrReviewState {
+  readonly prevBranch:    string
+  readonly prevBase:      string
+  readonly prevBaseLabel: string
+  readonly prevBaseType:  'Branch' | 'Tag' | 'Commit' | undefined
+  readonly stashed:       boolean
+}
 
+type PrMetaResult = { baseRef: string; headSha: string } | 'auth-required' | undefined
+
+function fetchPrMeta(owner: string, repo: string, prNumber: number, token?: string): Promise<PrMetaResult> {
   return new Promise(resolve => {
     const req = https.get({
       hostname: 'api.github.com',
@@ -27,6 +33,11 @@ async function resolvePrMeta(
         ...(token ? { Authorization: `token ${token}` } : {}),
       },
     }, res => {
+      if (res.statusCode === 401 || res.statusCode === 404) {
+        res.resume()
+        resolve('auth-required')
+        return
+      }
       let data = ''
       res.on('data', (chunk: string) => { data += chunk })
       res.on('end', () => {
@@ -42,16 +53,53 @@ async function resolvePrMeta(
   })
 }
 
+async function resolvePrMeta(
+  owner: string, repo: string, prNumber: number
+): Promise<{ baseRef: string; headSha: string } | undefined> {
+  // Try with a silent session first (no UI shown if not signed in).
+  let token: string | undefined
+  try {
+    token = (await vscode.authentication.getSession('github', ['repo'], { silent: true }))?.accessToken
+  } catch { /* no session */ }
+
+  let result = await fetchPrMeta(owner, repo, prNumber, token)
+
+  // On auth failure, prompt the user to sign in and retry once.
+  if (result === 'auth-required') {
+    try {
+      token = (await vscode.authentication.getSession('github', ['repo'], { createIfNone: true }))?.accessToken
+    } catch { return undefined }
+    result = await fetchPrMeta(owner, repo, prNumber, token)
+  }
+
+  return result === 'auth-required' ? undefined : result
+}
+
 /**
  * Shows a multi-step quick pick to select a base ref.
  * Returns the selection or undefined if the user cancelled.
  */
-export async function pickBase(root: string): Promise<BaseSelection | undefined> {
-  // Detect default branch for the one-click shortcut at the top of the picker.
-  const defaultBranch = await detectDefaultBranch(root)
+export async function pickBase(root: string, prReviewState?: PrReviewState): Promise<BaseSelection | undefined> {
+  // Run prerequisite queries in parallel before showing the picker.
+  const [defaultBranch, unstaged, staged] = await Promise.all([
+    detectDefaultBranch(root),
+    gitOrNull(root, 'diff', '--quiet'),
+    gitOrNull(root, 'diff', '--cached', '--quiet'),
+  ])
+  const isDirty = unstaged === null || staged === null
 
   type TypeItem = vscode.QuickPickItem & { key: string }
   const typeItems: TypeItem[] = []
+
+  // Exit item appears at the very top when in PR review mode.
+  if (prReviewState) {
+    const exitDesc = prReviewState.stashed
+      ? `return to ${prReviewState.prevBranch} · pop stash`
+      : `return to ${prReviewState.prevBranch}`
+    typeItems.push({ label: '← Exit GitHub PR Review', description: exitDesc, key: 'pr-exit' })
+    typeItems.push({ label: '', kind: vscode.QuickPickItemKind.Separator, key: '' })
+  }
+
   if (defaultBranch) {
     typeItems.push({ label: 'Default branch', description: defaultBranch, key: 'default' })
     typeItems.push({ label: '', kind: vscode.QuickPickItemKind.Separator, key: '' })
@@ -62,19 +110,47 @@ export async function pickBase(root: string): Promise<BaseSelection | undefined>
     { label: 'Commit…',    key: 'commit' },
     { label: 'Enter ref…', key: 'ref'    },
     { label: '', kind: vscode.QuickPickItemKind.Separator, key: '' },
-    { label: 'PR · base only…',   description: 'keep current branch, compare to PR base', key: 'pr-base'   },
-    { label: 'PR · full review…', description: 'switch to PR branch, compare to PR base', key: 'pr-review' },
+    { label: 'GitHub PR · my work vs target…',   description: 'compare current branch to PR base', key: 'pr-base'   },
+    { label: isDirty ? 'GitHub PR · PR changes… (will stash)' : 'GitHub PR · PR changes…',
+      description: 'compare PR to its base', key: 'pr-review' },
   )
 
   const typeItem = await vscode.window.showQuickPick(typeItems, { placeHolder: 'Select base type' })
   if (!typeItem) return undefined
+
+  // ── Exit GitHub PR Review ────────────────────────────────────────────────────
+  if (typeItem.key === 'pr-exit' && prReviewState) {
+    const ok = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Exiting GitHub PR Review…', cancellable: false },
+      async () => {
+        if (await gitOrNull(root, 'checkout', prReviewState.prevBranch) === null) return false
+        if (prReviewState.stashed) {
+          if (await gitOrNull(root, 'stash', 'pop') === null) {
+            void vscode.window.showWarningMessage(
+              'Your stashed changes could not be restored automatically — they are still safe in the stash. ' +
+              'Run "git stash pop" to apply them; if there are conflicts, resolve them then run "git stash drop".',
+              'Copy command'
+            ).then(action => {
+              if (action === 'Copy command') void vscode.env.clipboard.writeText('git stash pop')
+            })
+          }
+        }
+        return true
+      }
+    )
+    if (!ok) {
+      void vscode.window.showErrorMessage(`Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`)
+      return undefined
+    }
+    return { ref: prReviewState.prevBase, label: prReviewState.prevBaseLabel, type: prReviewState.prevBaseType, prExit: true }
+  }
 
   // Default branch: detectDefaultBranch already verified the ref.
   if (typeItem.key === 'default') {
     return { ref: defaultBranch!, label: defaultBranch!, type: 'Branch' }
   }
 
-  // ── Pull Request flows ───────────────────────────────────────────────────────
+  // ── GitHub Pull Request flows ────────────────────────────────────────────────
   if (typeItem.key === 'pr-base' || typeItem.key === 'pr-review') {
     const prUrl = await vscode.window.showInputBox({
       prompt: 'Enter GitHub Pull Request URL',
@@ -90,47 +166,56 @@ export async function pickBase(root: string): Promise<BaseSelection | undefined>
     const [, owner, repo, prNumStr] = m
     const prNumber = parseInt(prNumStr, 10)
 
-    const meta = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `Fetching PR #${prNumber} metadata…`, cancellable: false },
-      () => resolvePrMeta(owner, repo, prNumber)
+    const result = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `GitHub PR #${prNumber}…`, cancellable: false },
+      async () => {
+        const meta = await resolvePrMeta(owner, repo, prNumber)
+        if (!meta) return undefined
+
+        const { baseRef, headSha } = meta
+        const localBase = `origin/${baseRef}`
+
+        if (!await gitOrNull(root, 'rev-parse', '--verify', localBase)) {
+          await gitOrNull(root, 'fetch', 'origin', baseRef)
+        }
+
+        if (typeItem.key === 'pr-review') {
+          const prevBranch = (await gitOrNull(root, 'symbolic-ref', '--short', 'HEAD'))?.trim() ?? 'HEAD'
+
+          let stashed = false
+          if (isDirty) {
+            stashed = await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: PR review') !== null
+          }
+
+          const fetched = await gitOrNull(root, 'fetch', 'origin', `refs/pull/${prNumber}/head`)
+          if (fetched === null || await gitOrNull(root, 'checkout', '--detach', headSha) === null) {
+            if (stashed) await gitOrNull(root, 'stash', 'pop')
+            return 'checkout-failed'
+          }
+
+          return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · PR changes`, type: 'PR' as const, prEnter: { prevBranch, stashed } }
+        }
+
+        return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · my work vs target`, type: 'PR' as const }
+      }
     )
-    if (!meta) {
+
+    if (result === undefined) {
       void vscode.window.showErrorMessage(`Could not fetch PR #${prNumber} from GitHub. Check the URL and your network connection.`)
       return undefined
     }
-
-    const { baseRef, headSha } = meta
-    const localBase = `origin/${baseRef}`
-
-    if (!await gitOrNull(root, 'rev-parse', '--verify', localBase)) {
-      await gitOrNull(root, 'fetch', 'origin', baseRef)
+    if (result === 'checkout-failed') {
+      void vscode.window.showErrorMessage(`Failed to switch to PR #${prNumber}. Ensure origin points to GitHub.`)
+      return undefined
     }
 
-    if (typeItem.key === 'pr-review') {
-      const ok = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Fetching PR #${prNumber}…`, cancellable: false },
-        async () => {
-          const fetched = await gitOrNull(root, 'fetch', 'origin', `refs/pull/${prNumber}/head`)
-          if (fetched === null) return false
-          return await gitOrNull(root, 'checkout', '--detach', headSha) !== null
-        }
-      )
-      if (!ok) {
-        void vscode.window.showErrorMessage(
-          `Failed to switch to PR #${prNumber}. Ensure origin points to GitHub and you have no uncommitted changes.`
-        )
-        return undefined
-      }
-    }
-
-    if (typeItem.key === 'pr-base') {
+    if (!result.prEnter) {
       void vscode.window.showInformationMessage(
-        `Comparing your current branch to PR #${prNumber} base (${localBase}). ` +
-        `To see the exact PR changes, use "PR · full review…" instead.`
+        `Base set to PR #${prNumber} target (${result.ref}). For the exact PR diff, use "GitHub PR · PR changes…".`
       )
     }
 
-    return { ref: localBase, label: `PR #${prNumber} · ${owner}/${repo}`, type: 'Branch' }
+    return result
   }
 
   let newRef:   string | undefined

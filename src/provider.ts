@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import * as nodePath from 'path'
 import { GitRepository, RawChange, gitOrNull, getMergeBase, detectDefaultBranch, parseNameStatus, parseBinarySet } from './git'
-import { pickBase } from './picker'
+import { pickBase, PrReviewState } from './picker'
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext } from './workarounds'
@@ -17,7 +17,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 
   private baseRef         = 'HEAD'
   private baseLabel       = 'HEAD'
-  private baseType: 'Branch' | 'Tag' | 'Commit' | undefined = undefined
+  private baseType: 'Branch' | 'Tag' | 'Commit' | 'PR' | undefined = undefined
   private autoDetectDone  = false
   private running         = false
   lastDiffRef             = 'HEAD'
@@ -43,7 +43,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     if (stored) {
       this.baseRef   = stored
       this.baseLabel = ctx.workspaceState.get<string>(`taskChanges.baseLabel.${root}`) ?? stored
-      this.baseType  = ctx.workspaceState.get<'Branch' | 'Tag' | 'Commit'>(`taskChanges.baseType.${root}`)
+      this.baseType  = ctx.workspaceState.get<'Branch' | 'Tag' | 'Commit' | 'PR'>(`taskChanges.baseType.${root}`)
       this.syncLabel()
     }
 
@@ -54,7 +54,7 @@ export class TaskChangesProvider implements vscode.Disposable {
   private syncLabel(): void {
     this.group.label = this.baseLabel === 'HEAD'
       ? TaskChangesProvider.NO_BASE_LABEL
-      : !this.baseType
+      : !this.baseType || this.baseType === 'PR'
         ? this.baseLabel
         : `${this.baseType} · ${this.baseLabel}`
   }
@@ -148,7 +148,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     // For branches, diff against the merge base so only our changes are shown,
     // not diverging commits on the base branch.
     let diffRef = ref
-    if (this.baseType === 'Branch') {
+    if (this.baseType === 'Branch' || this.baseType === 'PR') {
       const mb = await getMergeBase(root, 'HEAD', ref)
       if (mb) diffRef = mb
     }
@@ -227,9 +227,23 @@ export class TaskChangesProvider implements vscode.Disposable {
   }
 
   async selectBase(): Promise<void> {
-    const root   = this.repo.rootUri.fsPath
-    const picked = await pickBase(root)
+    const root         = this.repo.rootUri.fsPath
+    const prReviewState = this.ctx.workspaceState.get<PrReviewState>(`taskChanges.prReview.${root}`)
+    const picked = await pickBase(root, prReviewState)
     if (!picked) return
+
+    if (picked.prEnter) {
+      const state: PrReviewState = {
+        ...picked.prEnter,
+        prevBase:      this.baseRef,
+        prevBaseLabel: this.baseLabel,
+        prevBaseType:  this.baseType === 'PR' ? undefined : this.baseType,
+      }
+      await this.ctx.workspaceState.update(`taskChanges.prReview.${root}`, state)
+    } else if (picked.prExit) {
+      await this.ctx.workspaceState.update(`taskChanges.prReview.${root}`, undefined)
+    }
+
     this.baseRef   = picked.ref
     this.baseLabel = picked.label
     this.baseType  = picked.type
