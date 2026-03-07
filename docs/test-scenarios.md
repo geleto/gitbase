@@ -345,8 +345,8 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - [User] click a U or A file in SCM list
 - Expected: working tree file opens directly (no diff)
 - Expected: the **git SCM panel does NOT expand** to reveal the file and does NOT steal focus away from GitBase (this is what `scm.autoReveal` controls — it prevents VS Code from searching all SCM providers and revealing the file in the first panel that owns it)
-- [Claude] re-read the VS Code user settings file and verify `scm.autoReveal` is restored to its original value; confirm the `finally` block in `openWithoutAutoReveal` did not leave the setting permanently overridden to `false`
-- Note: `openWithoutAutoReveal` in `workarounds.ts` temporarily sets `scm.autoReveal = false` globally to prevent VS Code from expanding the native git panel when an A/U file is opened (those files live in git's Changes/Untracked group). The setting is restored in a `finally` block.
+- [Claude] re-read the VS Code user settings file and verify `scm.autoReveal` is **absent** (the setting was not explicitly set before the test; the restore now removes it rather than writing `true` explicitly). Note: if the user explicitly had `"scm.autoReveal": true` before the test, the key will still be present with value `true` after restore — only users who had no explicit setting see the cleaner settings.json.
+- Note: `openWithoutAutoReveal` in `workarounds.ts` temporarily sets `scm.autoReveal = false` globally to prevent VS Code from expanding the native git panel when an A/U file is opened (those files live in git's Changes/Untracked group). The setting is restored in a `finally` block using `inspect()` to preserve the original explicit value (or remove the key if it was never explicitly set).
 
 **S03b · Open A/U file via inline icon — exercises fragment-stripping code path**
 - Precondition: an A or U file in the SCM list

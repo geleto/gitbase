@@ -89,12 +89,17 @@ export function assertScmContext(): void {
  * itself triggers `onDidChangeActiveTextEditor` and re-fires autoReveal.
  */
 export async function openWithoutAutoReveal(uri: vscode.Uri): Promise<void> {
-  const scmConfig = vscode.workspace.getConfiguration('scm')
-  const prev = scmConfig.get<boolean>('autoReveal')
-  if (prev !== false) await scmConfig.update('autoReveal', false, vscode.ConfigurationTarget.Global)
+  const scmConfig  = vscode.workspace.getConfiguration('scm')
+  // Use inspect() to get only the explicitly-set global value (undefined if defaulted).
+  const prev = scmConfig.inspect<boolean>('autoReveal')?.globalValue
+  // Only write if the effective value is not already false (i.e. don't suppress if user
+  // explicitly disabled auto-reveal — writing false when false is a no-op anyway).
+  const effective = scmConfig.get<boolean>('autoReveal')
+  if (effective !== false) await scmConfig.update('autoReveal', false, vscode.ConfigurationTarget.Global)
   try {
     await vscode.window.showTextDocument(uri)
   } finally {
-    if (prev !== false) await scmConfig.update('autoReveal', prev, vscode.ConfigurationTarget.Global)
+    // Restore to the previously-explicit value (undefined removes the setting from settings.json).
+    if (effective !== false) await scmConfig.update('autoReveal', prev, vscode.ConfigurationTarget.Global)
   }
 }
