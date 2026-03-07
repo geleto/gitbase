@@ -95,6 +95,13 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
 
   // ── GitHub Pull Request flows ────────────────────────────────────────────────
   if (typeItem.key === 'pr-base' || typeItem.key === 'pr-review') {
+    if (typeItem.key === 'pr-review' && prReviewState) {
+      void vscode.window.showWarningMessage(
+        'Already in GitHub PR Review. Exit the current review first before starting a new one.',
+      )
+      return undefined
+    }
+
     const prUrl = await vscode.window.showInputBox({
       prompt: 'Enter GitHub Pull Request URL',
       placeHolder: 'https://github.com/owner/repo/pull/123',

@@ -935,16 +935,13 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: `← Exit GitHub PR Review` still appears at top of picker after reload
 - Expected: exit description still shows correct `prevBranch` and stash indicator
 
-**S12 · Enter PR review from existing PR review (nested)**
+**S12 · Attempt to enter PR review while already in PR review (blocked)**
 - Precondition: in PR review mode for PR #A (HEAD is detached at PR A's SHA)
-- [User] open picker → `GitHub PR · PR changes…` → enter URL for PR #B
-- Expected: new detached HEAD at PR #B's SHA
-- Expected: `prevBranch` stored for PR #B is the literal string `'HEAD'` — NOT PR A's SHA. `git symbolic-ref --short HEAD` fails when HEAD is detached, so `pr.ts:109` falls back to the literal `'HEAD'`. Verify: exit description shows `return to HEAD · …`
-- [User] open picker → select `← Exit GitHub PR Review`
-- Expected: `exitPr` calls `git checkout HEAD` — this is a no-op in git (checks out the current HEAD in place) and exits 0. HEAD remains detached at PR #B's SHA; PR A's state is NOT restored.
-- Expected: no crash; `prReviewState` is cleared; `← Exit GitHub PR Review` disappears from picker
-- Expected: label reverts to `prevBase` (PR A's label or whatever was set before PR A was entered), but HEAD is still detached at PR #B's SHA — the branch you were on before PR A is not recovered
-- Note: this is a known limitation. Nested PR review is not supported; the `prevBranch = 'HEAD'` fallback means the inner exit cannot navigate back to the outer PR's detached state. Users should exit any active PR review before entering a new one.
+- [User] open picker → `GitHub PR · PR changes…` → (do not enter a URL yet)
+- Expected: warning notification `Already in GitHub PR Review. Exit the current review first before starting a new one.`
+- Expected: HEAD is unchanged (still detached at PR A's SHA)
+- Expected: `prReviewState` is unchanged; `← Exit GitHub PR Review` still appears at the top of the picker
+- Note: the guard at `picker.ts` fires immediately when `typeItem.key === 'pr-review' && prReviewState` is truthy, before any URL input box is shown. Users must exit the current PR review before entering a new one.
 
 **S13 · Re-enter same PR**
 - Precondition: exited PR review normally (S03)
