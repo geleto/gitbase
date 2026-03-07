@@ -306,7 +306,7 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - Expected: SCM label shows `HEAD · Select a base to begin` (auto-detect finds no `origin/HEAD`)
 - Expected: no crash occurs; `git diff HEAD` fails silently (`nsOut === null`) so the list stays empty
 - [Claude] make the first commit: `echo hello > first.txt && git add first.txt && git commit -m "init"`
-- Expected: within ~500ms the SCM list updates (the `repo.state.onDidChange` event fires after the commit, scheduling a refresh)
+- Expected: within ~500ms the provider refreshes without error — `repo.state.onDidChange` fires, scheduling a refresh. The SCM list remains empty (base is still `HEAD`; `git diff HEAD` on a now-valid HEAD produces no output) and no error notification appears.
 - [Claude] verify no error notifications appear in VS Code
 
 **S13 · Branch tip cache invalidates when base branch advances**
