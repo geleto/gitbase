@@ -214,6 +214,8 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
         return { label: subject, description: `${sha.slice(0, 8)} · ${date}`, sha }
       })
 
+    items.push({ label: 'Showing 50 most recent — use Enter ref… to set an older commit', kind: vscode.QuickPickItemKind.Separator, sha: '' })
+
     const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select commit…', matchOnDescription: true })
     if (picked) { newRef = picked.sha; newLabel = picked.label }   // label = subject
 

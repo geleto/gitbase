@@ -142,12 +142,14 @@ Each scenario lists the primary code path it exercises in brackets, e.g. `[picke
 - Expected label: `Commit · <subject>`
 - [Claude] verify stored ref is the full 40-char SHA
 - Note: the Commit picker shows at most the **50 most recent commits** (`git log -50` at `picker.ts:185`). Commits older than position 50 are not listed. To set a base older than 50 commits, the user must use `Enter ref…` and type or paste the SHA directly. See S05b.
+- Expected: a greyed footer label at the bottom of the commit list reads `Showing 50 most recent — use Enter ref… to set an older commit`
 
 **S05b · Select a commit older than the Commit picker depth limit**
 - Precondition: a repo with more than 50 commits; identify a commit SHA at position >50 (e.g. `git log --oneline | tail -5` to get the oldest visible commits)
 - [Claude] print a SHA at position >50: `git log --format=%H | sed -n '51p'`
 - [User] open picker → Commit…
 - Expected: the target commit does NOT appear in the list (only the 50 most recent are shown; `picker.ts:185` passes `-50` to `git log`)
+- Expected: a greyed footer label reads `Showing 50 most recent — use Enter ref… to set an older commit` — the truncation is now visible in the UI; the user no longer needs to discover the limit by noticing a commit is absent
 - [User] press Escape; then open picker → Enter ref… → paste the SHA
 - Expected label: `Commit · <sha>` (detectRefType falls through to `'Commit'` for a SHA)
 - [Claude] verify stored ref equals the pasted SHA
