@@ -45,6 +45,10 @@ export function isSha(ref: string): boolean {
   return /^[0-9a-f]{40}$/.test(ref)
 }
 
+export async function getMergeBase(root: string, ref1: string, ref2: string): Promise<string | null> {
+  return (await gitOrNull(root, 'merge-base', ref1, ref2))?.trim() ?? null
+}
+
 export async function detectRefType(root: string, ref: string): Promise<'Branch' | 'Tag' | 'Commit'> {
   if (await gitOrNull(root, 'show-ref', '--verify', `refs/heads/${ref}`)) return 'Branch'
   if (await gitOrNull(root, 'show-ref', '--verify', `refs/tags/${ref}`))  return 'Tag'

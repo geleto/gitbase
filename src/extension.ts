@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import * as nodePath from 'path'
-import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, detectRefType, parseNameStatus, parseBinarySet } from './git'
+import { GitExtension, GitRepository, RawChange, setGitPath, gitOrNull, getMergeBase, detectRefType, parseNameStatus, parseBinarySet } from './git'
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider, EmptyContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext, openWithoutAutoReveal } from './workarounds'
@@ -105,9 +105,17 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     await this.content.checkBranchTip(root, ref)
 
+    // For branches, diff against the merge base so only our changes are shown,
+    // not diverging commits on the base branch.
+    let diffRef = ref
+    if (this.baseType === 'Branch' && ref !== 'HEAD') {
+      const mb = await getMergeBase(root, 'HEAD', ref)
+      if (mb) diffRef = mb
+    }
+
     const [nsOut, numOut, dirtyOut, untrackedOut] = await Promise.all([
-      gitOrNull(root, 'diff', '--name-status', '-z', ref, '--'),
-      gitOrNull(root, 'diff', '--numstat',     '-z', ref, '--'),
+      gitOrNull(root, 'diff', '--name-status', '-z', diffRef, '--'),
+      gitOrNull(root, 'diff', '--numstat',     '-z', diffRef, '--'),
       ref === 'HEAD' ? null : gitOrNull(root, 'diff', 'HEAD', '--name-only', '-z', '--'),
       gitOrNull(root, 'ls-files', '--others', '--exclude-standard', '-z'),
     ])
@@ -123,7 +131,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 
     this.group.resourceStates = changes.map(c => {
       const isBin = binary.has(c.path) || (c.oldPath ? binary.has(c.oldPath) : false)
-      return this.makeState(root, ref, c, isBin)
+      return this.makeState(root, diffRef, c, isBin)
     })
     // Include untracked in dirtyPaths so WORKAROUND_DOUBLE_BADGE suppresses our 'A'
     // badge where git already shows 'U' (untracked) in the Explorer.
