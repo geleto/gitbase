@@ -1,10 +1,45 @@
 import * as vscode from 'vscode'
+import * as https from 'https'
 import { gitOrNull, detectDefaultBranch, detectRefType } from './git'
 
 export interface BaseSelection {
   readonly ref:   string
   readonly label: string
   readonly type:  'Branch' | 'Tag' | 'Commit' | undefined
+}
+
+async function resolvePrMeta(
+  owner: string, repo: string, prNumber: number
+): Promise<{ baseRef: string; headSha: string } | undefined> {
+  let token: string | undefined
+  try {
+    const session = await vscode.authentication.getSession('github', ['repo'], { silent: true })
+    token = session?.accessToken
+  } catch { /* no GitHub auth available */ }
+
+  return new Promise(resolve => {
+    const req = https.get({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/pulls/${prNumber}`,
+      headers: {
+        'User-Agent': 'gitbase-vscode',
+        Accept: 'application/vnd.github.v3+json',
+        ...(token ? { Authorization: `token ${token}` } : {}),
+      },
+    }, res => {
+      let data = ''
+      res.on('data', (chunk: string) => { data += chunk })
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data)
+          resolve(json.base?.ref && json.head?.sha
+            ? { baseRef: json.base.ref, headSha: json.head.sha }
+            : undefined)
+        } catch { resolve(undefined) }
+      })
+    })
+    req.on('error', () => resolve(undefined))
+  })
 }
 
 /**
@@ -26,6 +61,9 @@ export async function pickBase(root: string): Promise<BaseSelection | undefined>
     { label: 'Tag…',       key: 'tag'    },
     { label: 'Commit…',    key: 'commit' },
     { label: 'Enter ref…', key: 'ref'    },
+    { label: '', kind: vscode.QuickPickItemKind.Separator, key: '' },
+    { label: 'PR · base only…',   description: 'keep current branch, compare to PR base', key: 'pr-base'   },
+    { label: 'PR · full review…', description: 'switch to PR branch, compare to PR base', key: 'pr-review' },
   )
 
   const typeItem = await vscode.window.showQuickPick(typeItems, { placeHolder: 'Select base type' })
@@ -34,6 +72,58 @@ export async function pickBase(root: string): Promise<BaseSelection | undefined>
   // Default branch: detectDefaultBranch already verified the ref.
   if (typeItem.key === 'default') {
     return { ref: defaultBranch!, label: defaultBranch!, type: 'Branch' }
+  }
+
+  // ── Pull Request flows ───────────────────────────────────────────────────────
+  if (typeItem.key === 'pr-base' || typeItem.key === 'pr-review') {
+    const prUrl = await vscode.window.showInputBox({
+      prompt: 'Enter GitHub Pull Request URL',
+      placeHolder: 'https://github.com/owner/repo/pull/123',
+      validateInput: val =>
+        /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.test(val)
+          ? null
+          : 'Expected: https://github.com/owner/repo/pull/123',
+    })
+    if (!prUrl) return undefined
+
+    const m = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/)!
+    const [, owner, repo, prNumStr] = m
+    const prNumber = parseInt(prNumStr, 10)
+
+    const meta = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Fetching PR #${prNumber} metadata…`, cancellable: false },
+      () => resolvePrMeta(owner, repo, prNumber)
+    )
+    if (!meta) {
+      void vscode.window.showErrorMessage(`Could not fetch PR #${prNumber} from GitHub. Check the URL and your network connection.`)
+      return undefined
+    }
+
+    const { baseRef, headSha } = meta
+    const localBase = `origin/${baseRef}`
+
+    if (!await gitOrNull(root, 'rev-parse', '--verify', localBase)) {
+      await gitOrNull(root, 'fetch', 'origin', baseRef)
+    }
+
+    if (typeItem.key === 'pr-review') {
+      const ok = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Fetching PR #${prNumber}…`, cancellable: false },
+        async () => {
+          const fetched = await gitOrNull(root, 'fetch', 'origin', `refs/pull/${prNumber}/head`)
+          if (fetched === null) return false
+          return await gitOrNull(root, 'checkout', '--detach', headSha) !== null
+        }
+      )
+      if (!ok) {
+        void vscode.window.showErrorMessage(
+          `Failed to switch to PR #${prNumber}. Ensure origin points to GitHub and you have no uncommitted changes.`
+        )
+        return undefined
+      }
+    }
+
+    return { ref: localBase, label: `PR #${prNumber} · ${owner}/${repo}`, type: 'Branch' }
   }
 
   let newRef:   string | undefined
