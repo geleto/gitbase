@@ -52,7 +52,7 @@ function fetchPrMeta(owner: string, repo: string, prNumber: number, token?: stri
 
 async function resolvePrMeta(
   owner: string, repo: string, prNumber: number
-): Promise<{ baseRef: string; headSha: string } | 'not-found' | undefined> {
+): Promise<{ baseRef: string; headSha: string } | 'not-found' | 'auth-cancelled' | undefined> {
   // Try with a silent session first (no UI shown if not signed in).
   let token: string | undefined
   try {
@@ -68,7 +68,7 @@ async function resolvePrMeta(
   if (result === 'auth-required') {
     try {
       token = (await vscode.authentication.getSession('github', ['repo'], { createIfNone: true }))?.accessToken
-    } catch { return undefined }
+    } catch { return 'auth-cancelled' }
     result = await fetchPrMeta(owner, repo, prNumber, token)
     if (result === 'not-found') return 'not-found'
   }
@@ -95,9 +95,10 @@ export async function resolvePr(
   owner: string,
   repo: string,
   prNumber: number,
-): Promise<BaseSelection | 'checkout-failed' | 'checkout-failed-stash-left' | 'fetch-failed' | 'not-found' | undefined> {
+): Promise<BaseSelection | 'checkout-failed' | 'checkout-failed-stash-left' | 'fetch-failed' | 'not-found' | 'auth-cancelled' | undefined> {
   const meta = await resolvePrMeta(owner, repo, prNumber)
   if (meta === 'not-found') return 'not-found'
+  if (meta === 'auth-cancelled') return 'auth-cancelled'
   if (!meta) return undefined
 
   const { baseRef, headSha } = meta

@@ -960,10 +960,10 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - [User] open picker → `GitHub PR · PR changes…` → enter a PR URL from the private repo
 - Expected: GitHub sign-in dialog appears
 - [User] dismiss or cancel the sign-in dialog
-- Expected: error notification `Could not fetch PR #N from GitHub. Check the URL and your network connection.`
+- Expected: nothing happens — no error notification, silent no-op (same as pressing Escape on the picker)
 - Expected: HEAD unchanged, no stash created (stash/checkout steps occur after `resolvePrMeta` succeeds, which it did not)
 - [Claude] verify `git stash list` is empty
-- Note: cancelling `getSession({ createIfNone: true })` causes it to throw; the `catch` in `resolvePrMeta` returns `undefined`; `resolvePr` returns `undefined`; the picker surfaces the standard fetch-error message. The cancellation is not distinguishable from a network failure at the UI level.
+- Note: cancelling `getSession({ createIfNone: true })` causes it to throw; the `catch` in `resolvePrMeta` now returns `'auth-cancelled'`; `resolvePr` propagates `'auth-cancelled'`; `picker.ts` silently returns `undefined` with no notification. Auth cancellation is now distinguishable from a network failure and treated as a deliberate user cancel.
 
 **S16 · PR entry checkout failure — clean working tree**
 - Precondition: clean working tree, on `feature/alpha`; simulate a checkout failure after fetch (e.g. use a shallow clone where the PR head SHA is not present locally and the fetch is blocked)
