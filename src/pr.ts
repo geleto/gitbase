@@ -86,7 +86,7 @@ export async function resolvePr(
   owner: string,
   repo: string,
   prNumber: number,
-): Promise<BaseSelection | 'checkout-failed' | undefined> {
+): Promise<BaseSelection | 'checkout-failed' | 'checkout-failed-stash-left' | undefined> {
   const meta = await resolvePrMeta(owner, repo, prNumber)
   if (!meta) return undefined
 
@@ -107,7 +107,7 @@ export async function resolvePr(
 
     const fetched = await gitOrNull(root, 'fetch', 'origin', `refs/pull/${prNumber}/head`)
     if (fetched === null || await gitOrNull(root, 'checkout', '--detach', headSha) === null) {
-      if (stashed) await gitOrNull(root, 'stash', 'pop')
+      if (stashed && await gitOrNull(root, 'stash', 'pop') === null) return 'checkout-failed-stash-left'
       return 'checkout-failed'
     }
 

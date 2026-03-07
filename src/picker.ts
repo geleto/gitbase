@@ -99,8 +99,17 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
       void vscode.window.showErrorMessage(`Could not fetch PR #${prNumber} from GitHub. Check the URL and your network connection.`)
       return undefined
     }
-    if (result === 'checkout-failed') {
+    if (result === 'checkout-failed' || result === 'checkout-failed-stash-left') {
       void vscode.window.showErrorMessage(`Failed to switch to PR #${prNumber}. Ensure origin points to GitHub.`)
+      if (result === 'checkout-failed-stash-left') {
+        void vscode.window.showWarningMessage(
+          'Your stashed changes could not be restored automatically — they are still safe in the stash. ' +
+          'Run "git stash pop" to apply them; if there are conflicts, resolve them then run "git stash drop".',
+          'Copy command'
+        ).then(action => {
+          if (action === 'Copy command') void vscode.env.clipboard.writeText('git stash pop')
+        })
+      }
       return undefined
     }
 
