@@ -507,13 +507,13 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - [Claude] verify the keys differ: `taskChanges.base.<rootA>` ≠ `taskChanges.base.<rootB>` — the root path suffix keeps their state separate within a single workspace
 - Note: this scenario tests isolation between two *different* repo paths in one window. Two windows open on the *same* folder share the same workspaceState storage key — last writer wins; see FS-06 S07.
 
-**S10 · Workaround C side-effect — git panel buttons flicker after GitBase refresh**
+**S10 · Git panel button stability during GitBase refresh**
 - Precondition: both the native git SCM panel and the GitBase Changes panel are visible; a file is staged in the git panel (Stage button visible on hover)
 - [Claude] trigger a GitBase refresh by modifying a file externally
 - [User] immediately hover a file in the git SCM panel
-- Expected: git's inline Stage/Discard buttons may disappear briefly from the git panel row immediately after the refresh, then reappear on the next hover
-- Expected: no permanent loss of git panel functionality; the buttons return without reloading VS Code
-- Note: `assertScmContext()` re-asserts `scmProvider=taskchanges` and `scmResourceGroup=changes` after every GitBase refresh (Workaround C in `workarounds.ts`). This temporarily evicts VS Code's context keys for the git panel. The known side-effect is documented in `docs/bug-vscode-scm-button-cache-contamination.md`. Set `WORKAROUND_STALE_SCM_CONTEXT = false` to reproduce without the secondary mitigation.
+- Expected: git's inline Stage/Discard buttons remain stable — they do **not** flicker or disappear during or after the GitBase refresh
+- Expected: no permanent loss of git panel functionality
+- Note: `assertScmContext()` is no longer called on every periodic refresh; it is now only invoked on the deleted-ref recovery and null-diff edge-case paths. The primary fix is Workaround A (the `#gitbase` URI fragment). Setting `WORKAROUND_STALE_SCM_CONTEXT = false` disables the secondary assertion entirely. See `docs/bug-vscode-scm-button-cache-contamination.md`.
 
 ---
 

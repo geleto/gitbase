@@ -52,12 +52,19 @@ export const WORKAROUND_DOUBLE_BADGE = true
  *
  * VS Code does not always flush `scmProvider` / `scmResourceGroup` context
  * keys when focus moves between SCM providers.  Workaround A above is the
- * primary fix; this secondary workaround re-asserts our context keys after
- * every refresh so that any residual staleness is cleared on the next render.
+ * primary fix; this secondary workaround re-asserts our context keys in the
+ * specific code paths where staleness is observable (deleted-ref recovery and
+ * the null-diff edge case).
  *
- * Known side-effect: git extension inline buttons disappear briefly from the
- * git panel immediately after each GitBase refresh (until VS Code re-sets the
- * keys on the next git-resource hover).  Set to `false` to disable.
+ * Previously, `assertScmContext()` was also called on every periodic refresh
+ * (~every 400 ms), which caused git-panel inline buttons (Stage / Discard) to
+ * disappear on every hover while both SCM panels were visible.  That call site
+ * has been removed; the assertion now only fires on the two edge-case paths
+ * where the context genuinely needs to be re-established.
+ *
+ * Known side-effect: git extension inline buttons may still disappear briefly
+ * in those edge cases (deleted-ref recovery, unborn repo), which is acceptable.
+ * Set to `false` to disable all assertions.
  * See: docs/bug-vscode-scm-button-cache-contamination.md (secondary mitigation)
  */
 export const WORKAROUND_STALE_SCM_CONTEXT = true

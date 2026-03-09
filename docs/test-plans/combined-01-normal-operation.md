@@ -775,7 +775,7 @@ echo "# refresh test" >> FILE_M
 
 Expected: The SCM list updates to show FILE_M with M decoration (or updates its position if it was already there).
 
-### F.2 — Git panel button flicker after GitBase refresh (`FS-05 S10`)
+### F.2 — Git panel button stability during GitBase refresh (`FS-05 S10`)
 
 **Precondition:** Both the native git SCM panel and the GitBase Changes panel are visible. At least one file is staged in the git panel (git's Stage button is visible on hover).
 
@@ -786,10 +786,10 @@ echo "# flicker test" >> FILE_M
 
 [User] Immediately hover a file in the **git SCM panel** (not the GitBase panel) and observe the inline buttons.
 
-Expected: Git's inline Stage/Discard buttons may disappear briefly from the git panel row immediately after the refresh, then reappear on the next hover.
-Expected: No permanent loss of git panel functionality — the buttons return without requiring a VS Code reload.
+Expected: Git's inline Stage/Discard buttons remain stable — they do **not** disappear and reappear during or after the GitBase refresh.
+Expected: No permanent loss of git panel functionality.
 
-Note: `assertScmContext()` in `workarounds.ts` re-asserts `scmProvider=taskchanges` and `scmResourceGroup=changes` after every GitBase refresh (Workaround C). This temporarily evicts VS Code's context keys for the git panel, causing the transient button disappearance. The behaviour is documented in `docs/bug-vscode-scm-button-cache-contamination.md`. Setting `WORKAROUND_STALE_SCM_CONTEXT = false` reproduces the baseline without this mitigation.
+Note: `assertScmContext()` (Workaround C in `workarounds.ts`) was previously called on every periodic refresh, which caused the git panel's inline buttons to flicker on every hover. That call has been removed from the refresh hot path; `assertScmContext()` is now only called on the two edge-case paths where context genuinely needs to be re-established (deleted-ref recovery and the null-diff / unborn-repo path). The primary button-contamination fix remains Workaround A (the `#gitbase` URI fragment). Setting `WORKAROUND_STALE_SCM_CONTEXT = false` disables the secondary assertion entirely.
 
 ---
 

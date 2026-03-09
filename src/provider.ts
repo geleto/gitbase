@@ -190,7 +190,6 @@ export class TaskChangesProvider implements vscode.Disposable {
       ? new Set(changes.map(c => c.path))
       : new Set([...(dirtyOut ?? '').split('\0').filter(Boolean), ...untracked])
     this.decoProvider.update(root, changes, dirtyPaths)
-    assertScmContext()
   }
 
   private makeState(root: string, ref: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
