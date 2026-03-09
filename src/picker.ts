@@ -8,7 +8,11 @@ export { BaseSelection, PrReviewState }
  * Shows a multi-step quick pick to select a base ref.
  * Returns the selection or undefined if the user cancelled.
  */
-export async function pickBase(root: string, prReviewState?: PrReviewState): Promise<BaseSelection | undefined> {
+export async function pickBase(
+  root: string,
+  prReviewState?: PrReviewState,
+  onRefreshNeeded?: () => void,
+): Promise<BaseSelection | undefined> {
   // Run prerequisite queries in parallel before showing the picker.
   const [defaultBranch, unstaged, staged] = await Promise.all([
     detectDefaultBranch(root),
@@ -209,8 +213,14 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
     if (!result.prEnter) {
       if (result.stale) {
         void vscode.window.showInformationMessage(
-          `Diff is against your local ${result.ref} (last fetched). Run git fetch to update.`
-        )
+          `Diff is against your local ${result.ref} (last fetched). Run git fetch to update.`,
+          'Fetch Now'
+        ).then(async action => {
+          if (action === 'Fetch Now') {
+            await gitOrNull(root, 'fetch', 'origin')
+            onRefreshNeeded?.()
+          }
+        })
       }
       // Advertising notification removed — the picker already shows both PR options.
     }

@@ -234,7 +234,7 @@ export class TaskChangesProvider implements vscode.Disposable {
   async selectBase(): Promise<void> {
     const root         = this.repo.rootUri.fsPath
     const prReviewState = this.ctx.workspaceState.get<PrReviewState>(`taskChanges.prReview.${root}`)
-    const picked = await pickBase(root, prReviewState)
+    const picked = await pickBase(root, prReviewState, () => this.schedule())
     if (!picked) return
 
     if (picked.prEnter) {

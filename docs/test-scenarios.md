@@ -802,10 +802,12 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: extension accepts the selection without fetching (the `if (!await gitOrNull(root, 'rev-parse', '--verify', localBase))` guard at `pr.ts:104` evaluates to false because `origin/main` already exists; the fetch block is skipped entirely)
 - [Claude] verify: `git rev-parse origin/main` still equals the stale SHA recorded above (no automatic fetch occurred)
 - Expected: the SCM diff is computed against the **stale** local `origin/main`, not the current remote tip — changes on the remote base branch since the last fetch are invisible to the diff
-- Expected: one info notification `Diff is against your local origin/main (last fetched). Run git fetch to update.` — this is the only notification shown (the advertising notification was removed)
-- [User] run `git fetch origin` in the terminal, then observe the SCM list update
-- Expected: after the fetch, the diff now reflects the current remote base branch; the SCM list may shrink (if base-branch commits merged features also in your branch) or expand
-- Note: the extension avoids fetching on every base selection to stay fast and offline-friendly. The stale notification informs the user without changing this behaviour.
+- Expected: one info notification `Diff is against your local origin/main (last fetched). Run git fetch to update.` with a `Fetch Now` button — this is the only notification shown (the advertising notification was removed)
+- [User] click `Fetch Now` in the notification
+- Expected: `git fetch origin` runs and the SCM list updates automatically (the `Fetch Now` handler calls `onRefreshNeeded` which triggers `schedule()`)
+- [Claude] verify: `git rev-parse origin/main` now equals the remote SHA recorded above
+- Expected: after the fetch, the diff reflects the current remote base branch; the SCM list may shrink or expand
+- Note: the extension avoids fetching on every base selection to stay fast and offline-friendly. The `Fetch Now` button lets the user update on demand without leaving VS Code.
 
 **S11 · Base-branch fetch failure produces an immediate error**
 - Precondition: GitHub API returns valid PR metadata (baseRef, headSha) but `origin/<baseRef>` does not exist locally and the fetch will fail (e.g. simulate by temporarily removing `origin` remote after the metadata call, or by pointing `origin` at a repo that is reachable for HTTPS but lacks the branch; alternatively reproduce by manually deleting the remote ref and blocking network access)

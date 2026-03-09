@@ -213,19 +213,25 @@ Note that this SHA differs from the stale local one.
 [User] Enter a PR URL via `GitHub PR · my work vs target…`.
 
 Expected: The extension accepts the selection without re-fetching (the `origin/main` ref already exists locally; the fetch guard at `pr.ts:104` is skipped).
-Expected: One info notification: `Diff is against your local origin/main (last fetched). Run git fetch to update.`
+Expected: One info notification: `Diff is against your local origin/main (last fetched). Run git fetch to update.` with a `Fetch Now` button.
 
-[Check] Verify no automatic fetch occurred:
+[Check] Verify no automatic fetch occurred yet:
 ```
 git rev-parse origin/main
 ```
 Expected: Still equals the stale SHA recorded above.
 
-[User] Run `git fetch origin` in the terminal, then observe the SCM list.
+[User] Click `Fetch Now` in the notification.
 
-Expected: After the fetch, the diff updates to reflect the current remote base branch.
+Expected: `git fetch origin` runs and the SCM list updates automatically.
 
-Note: The extension avoids fetching on every base selection to stay fast and offline-friendly. The stale notification informs the user without changing this behaviour.
+[Check] Verify the fetch occurred:
+```
+git rev-parse origin/main
+```
+Expected: Now equals the remote SHA recorded above (not the stale one).
+
+Note: The extension avoids fetching on every base selection to stay fast and offline-friendly. The `Fetch Now` button lets the user update on demand without leaving VS Code.
 
 ### A.9 — Private repo triggers auth prompt (`FS-08 S02`)
 
