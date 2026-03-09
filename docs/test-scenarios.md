@@ -895,7 +895,7 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Precondition: in PR review mode; user has committed a change in detached HEAD
 - [Claude] make a commit in detached HEAD: `echo test > test-detached.txt && git add test-detached.txt && git commit -m "detached commit"`
 - [User] open picker → `← Exit GitHub PR Review`
-- Expected: warning `You have 1 unpublished commit in detached HEAD that will become unreachable after exit. Create a branch to keep them.`
+- Expected: warning `You have 1 unpublished commit in detached HEAD that will become unreachable after exit. Create a branch to keep them. (Recoverable via git reflog for ~90 days.)`
 - Expected: three buttons: `Create Branch…`, `Exit Anyway`, and `Cancel`
 
 **S05a · Create Branch from detached commits**

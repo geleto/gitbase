@@ -61,7 +61,7 @@ export async function pickBase(
     const detached = await countDetachedCommits(root)
     if (detached > 0) {
       const action = await vscode.window.showWarningMessage(
-        `You have ${detached} unpublished commit${detached === 1 ? '' : 's'} in detached HEAD that will become unreachable after exit. Create a branch to keep them.`,
+        `You have ${detached} unpublished commit${detached === 1 ? '' : 's'} in detached HEAD that will become unreachable after exit. Create a branch to keep them. (Recoverable via git reflog for ~90 days.)`,
         'Create Branch…', 'Exit Anyway', 'Cancel'
       )
       if (!action || action === 'Cancel') return undefined

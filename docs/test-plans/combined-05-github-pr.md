@@ -543,7 +543,7 @@ Note the printed SHA — it is needed in the check below.
 
 [User] Open the picker → `← Exit GitHub PR Review`.
 
-Expected: A warning reads: `You have 1 unpublished commit in detached HEAD that will become unreachable after exit. Create a branch to keep them.`
+Expected: A warning reads: `You have 1 unpublished commit in detached HEAD that will become unreachable after exit. Create a branch to keep them. (Recoverable via git reflog for ~90 days.)`
 Expected: Three buttons: `Create Branch…`, `Exit Anyway`, and `Cancel`.
 
 **Test Cancel (FS-09 S06):**
