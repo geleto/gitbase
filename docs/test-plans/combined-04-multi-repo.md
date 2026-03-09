@@ -14,6 +14,8 @@
 - VS Code is open on `REPO_A`; GitBase Changes panel shows `Branch · origin/main`
 - Extension is active
 
+> **Shell:** All `[Claude]` commands use bash syntax (`$(…)`, `mktemp`, `grep`, etc.). Run them from Claude Code's integrated bash shell, Git Bash, or WSL — not from PowerShell directly.
+
 ## Optimisation Rationale
 
 All multi-repo scenarios share the same workspace setup (two repos open simultaneously). FS-05 S09 (workspaceState namespacing) and FS-06 S08 (late repo discovery) slot naturally into the multi-repo session rather than requiring separate setups. The FS-07 scenarios are sequenced to build on each other's state, minimising intermediate workspace changes.
@@ -93,12 +95,15 @@ Expected label for repo A: `Branch · origin/feature/alpha`
 [User] In **repo B's** GitBase panel: open the picker → Commit… → select any commit.
 Expected label for repo B: `Commit · <subject>`
 
-[Check] Verify the two stored keys are different. The key format is `taskChanges.base.<root-path>`. Confirm repo A's root path differs from repo B's root path:
-```
-echo "Repo A root: $(cd REPO_A && git rev-parse --show-toplevel)"
+[Check] Verify the stored key names differ. The key format is `taskChanges.base.<absolute-root-path>`, so different root paths produce different key names by construction:
+```bash
+REPO_B="$(dirname "$(git rev-parse --show-toplevel)")/gitbase-test-repo-b"
+echo "Repo A root: $(git rev-parse --show-toplevel)"
 echo "Repo B root: $REPO_B"
 ```
-Expected: The paths differ → the keys `taskChanges.base.<rootA>` and `taskChanges.base.<rootB>` are distinct → each repo stores its base independently.
+Expected: The paths differ. The behavioral proof is already established above: repo A's label shows `Branch · origin/feature/alpha` while repo B's shows `Commit · <subject>`, confirming each repo reads and writes its own storage key.
+
+Optional deeper verification — [User] open `Help → Toggle Developer Tools` → Application tab → Storage → IndexedDB → find the workspaceStorage entry for this VS Code window → confirm two separate `taskChanges.base.*` keys exist with different path suffixes, each holding the ref set for its respective repo.
 
 Note: This tests isolation between two *different* repo paths in one window. Two windows open on the *same* folder share the same workspaceState key — last writer wins (tested in Combined-02 Section E).
 
@@ -111,27 +116,34 @@ Note: This tests isolation between two *different* repo paths in one window. Two
 ### C.1 — Setup: create a second repo with the same basename as repo A
 
 [Claude] Create a third repo with the same basename as repo A:
-```
+```bash
 REPO_A_NAME=$(basename "$(git rev-parse --show-toplevel)")
-REPO_C=$(mktemp -d)/gitbase-test-dup
-mkdir -p "$(dirname $REPO_C)/$REPO_A_NAME"
-REPO_C="$(dirname $REPO_C)/$REPO_A_NAME"
+REPO_BASE=$(mktemp -d)
+REPO_C="$REPO_BASE/$REPO_A_NAME"
+mkdir -p "$REPO_C"
 cd "$REPO_C"
 git init
 git commit --allow-empty -m "initial"
 echo "Duplicate basename repo: $REPO_C"
 ```
 
-Note: The folder name of `REPO_C` is the same as `REPO_A_NAME`.
+Note: The folder name of `REPO_C` is the same as `REPO_A_NAME`. Record the printed `REPO_C` path — you will need it verbatim in the Reset step below.
 
 [User] Add the duplicate repo to the workspace: File → Add Folder to Workspace… → select `REPO_C`.
 
 [User] Open the command palette → `Task Changes: Select Base…`.
 
 Expected: The repo quick pick shows two entries with the same `label` (the shared folder name). They are distinguished only by the `description` field, which shows the full absolute path for each (`extension.ts:70`).
-Expected: Selecting either entry opens the correct base picker for that specific repo.
 
-[User] Press Escape to close the picker.
+[User] Select repo A's entry (identified by its full path in the description) from the quick pick.
+
+Expected: The base picker opens showing refs for repo A (e.g. `origin/main` is listed). This confirms selection routes to the correct repo despite the shared label.
+
+[User] Press Escape to close the base picker without selecting.
+
+[User] Open the command palette → `Task Changes: Select Base…` again.
+
+[User] Press Escape when the repo quick pick appears.
 
 [Reset] Remove the duplicate repo from the workspace: File → Remove Folder from Workspace → select `REPO_C`. Claude removes the directory:
 ```
@@ -144,8 +156,9 @@ rm -rf "$REPO_C"
 
 ### D.1 — Copy Relative Path uses correct repo root (`FS-07 S04`)
 
-**Precondition:** Repo B has at least one file in its GitBase diff list. If it does not, [Claude] create a modification:
-```
+**Precondition:** Repo B has at least one file in its GitBase diff list. If it does not, [Claude] re-derive `REPO_B` and create a modification:
+```bash
+REPO_B="$(dirname "$(git rev-parse --show-toplevel)")/gitbase-test-repo-b"
 echo "change" >> "$REPO_B/file-b.txt"
 ```
 
@@ -231,29 +244,41 @@ Expected: GitBase Changes panel for repo A reappears with label `Branch · origi
 
 **Purpose:** Verify that resource commands resolve against the most-specific (deepest) matching repo when one repo root is a path-prefix of another.
 
-**Note:** VS Code may not allow adding a subfolder of an already-open workspace folder via File → Add Folder to Workspace. If the UI blocks this, this scenario requires opening VS Code with a multi-root `.code-workspace` file. If that is not practical in the current session, skip this section.
+**Note:** VS Code may not allow adding a subfolder of an already-open workspace folder via File → Add Folder to Workspace. If the UI blocks this, open VS Code with a multi-root `.code-workspace` file that lists both paths:
+```json
+{
+  "folders": [
+    { "path": "<REPO_A path>" },
+    { "path": "<REPO_NESTED path>" }
+  ]
+}
+```
+Save the file and open it with `code <filename>.code-workspace`.
 
 ### G.1 — Setup: nested repo
 
 [Claude] Create a nested repo inside repo A's directory:
-```
-REPO_NESTED="$(git rev-parse --show-toplevel)/packages/lib"
+```bash
+REPO_A="$(git rev-parse --show-toplevel)"
+REPO_NESTED="$REPO_A/packages/lib"
 mkdir -p "$REPO_NESTED"
-cd "$REPO_NESTED"
-git init
-echo "nested lib content" > lib.txt
-git add lib.txt
-git commit -m "initial"
+git -C "$REPO_NESTED" init
+echo "nested lib content" > "$REPO_NESTED/lib.txt"
+git -C "$REPO_NESTED" add lib.txt
+git -C "$REPO_NESTED" commit -m "initial"
+echo "Repo A: $REPO_A"
 echo "Nested repo: $REPO_NESTED"
 ```
+
+Note: Record both printed paths. Do NOT `cd` into `REPO_NESTED` — the shell must remain in repo A so that subsequent `git rev-parse --show-toplevel` calls in this section resolve correctly.
 
 [User] If VS Code allows it: File → Add Folder to Workspace… → select `REPO_NESTED`. Otherwise create a `.code-workspace` file listing both paths and open it.
 
 [User] Ensure both repos have at least one file in their GitBase diff lists. Modify a file in the nested repo:
 
 [Claude] Create a change in the nested repo:
-```
-echo "change" >> "$REPO_NESTED/lib.txt"
+```bash
+echo "change" >> "$(git rev-parse --show-toplevel)/packages/lib/lib.txt"
 ```
 
 ### G.2 — Right-click resolves to most-specific provider
@@ -276,8 +301,9 @@ rm -rf "$(git rev-parse --show-toplevel)/packages"
 
 ## Teardown
 
-[Claude] Remove repo B if it still exists:
-```
+[Claude] Remove repo B if it still exists (re-derive the path in case the variable was not preserved across sections):
+```bash
+REPO_B="$(dirname "$(git rev-parse --show-toplevel)")/gitbase-test-repo-b"
 rm -rf "$REPO_B" 2>/dev/null || true
 ```
 

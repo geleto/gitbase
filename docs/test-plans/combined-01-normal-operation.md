@@ -4,6 +4,7 @@
 
 | Feature Set | Scenarios Included |
 |-------------|-------------------|
+| FS-01 · Test Repository Setup | S01, S02, S03 |
 | FS-02 · Base Selection | S01, S02, S03, S04, S05, S06, S07, S07b, S08, S09, S10, S11, S12, S13 |
 | FS-03 · Diff Display | S01, S02, S03, S04, S05, S06, S07, S08, S09, S10, S11, S13 |
 | FS-04 · File Actions | S01, S02, S03, S03b, S03c, S04, S05, S06, S07, S08, S09, S10, S11, S12, S13, S14, S15 |
@@ -24,14 +25,142 @@
 
 ## Prerequisites
 
-- FS-01 has been completed: test repo exists, bare origin wired up, branches `main`, `feature/alpha`, `feature/beta`, `old-branch`, tags `v1.0`, `v1.1`, `origin/HEAD → origin/main` configured
-- Extension is built (`npm run compile` succeeded)
-- VS Code is open on the test repo; GitBase Changes panel is visible with label `Branch · origin/main`
-- The working branch is `feature/alpha` (has commits diverging from `main`)
+- A parent directory is available for the test repo and bare origin (Section 0 creates them from scratch).
+- The GitBase extension source is available and Node.js / npm are installed (for the build step in Section 0.3).
+- VS Code is installed with the GitBase extension installed or loadable from source.
+
+> **If the test repo already exists and the extension is already built**, skip Section 0 and confirm: GitBase Changes panel shows `Branch · origin/main`; working branch is `feature/alpha`.
+
+> **Shell:** All `[Claude]` commands use bash syntax (`$(…)`, `mktemp`, `grep`, etc.). Run them from Claude Code's integrated bash shell, Git Bash, or WSL — not from PowerShell directly.
 
 ## Optimisation Rationale
 
-The original scenarios set up one file state at a time (FS-03 S01–S05) and then test actions on each type separately (FS-04). This plan sets up all file states simultaneously in a single Claude setup pass, then has the user observe all types, act on each type, and verify labels — all in one session. FS-05 label verification is embedded into each picker selection rather than repeated as a separate feature set.
+Section 0 folds the FS-01 repository setup and extension build verification into the start of this plan, so the test environment is validated before any feature testing begins. The original FS-03 S01–S05 scenarios set up one file state at a time and then test actions on each type separately (FS-04). This plan sets up all file states simultaneously in a single Claude setup pass, then has the user observe all types, act on each type, and verify labels — all in one session. FS-05 label verification is embedded into each picker selection rather than repeated as a separate feature set.
+
+---
+
+## Section 0: Repository Setup and Extension Verification
+
+> **Run once.** If the test repository already exists and the extension is built, skip to Section A and confirm the label shows `Branch · origin/main` with working branch `feature/alpha`.
+
+**Purpose:** Create the canonical test repository (`FS-01 S01`), verify the extension activates and auto-detects the default branch (`FS-01 S02`), and confirm the extension builds without errors (`FS-01 S03`).
+
+### 0.1 — Create repo structure (`FS-01 S01`)
+
+[Claude] Choose a parent directory (adjust `$BASE` to suit your system), then create the bare origin and working repo:
+```bash
+BASE="$HOME/gitbase-tests"
+mkdir -p "$BASE"
+
+# Bare origin
+git init --bare "$BASE/origin.git"
+
+# Working repo
+git init "$BASE/testrepo"
+cd "$BASE/testrepo"
+git remote add origin "$BASE/origin.git"
+
+# Initial commits on main
+echo "# GitBase test repo" > README.md
+echo "line 1" > file-a.txt
+echo "line 2" > file-b.txt
+echo "line 3" > file-c.txt
+git add .
+git commit -m "Initial commit"
+git tag v1.0
+
+echo "main update" >> README.md
+git add README.md
+git commit -m "Main: second commit"
+git tag v1.1
+
+git push origin HEAD:main
+git branch -u origin/main main
+
+# feature/alpha — branches from the first commit so it diverges from main
+git checkout -b feature/alpha HEAD~1
+echo "alpha change 1" >> file-a.txt
+git add file-a.txt
+git commit -m "Alpha: update file-a"
+echo "alpha change 2" >> file-b.txt
+git add file-b.txt
+git commit -m "Alpha: update file-b"
+git push origin feature/alpha
+git branch -u origin/feature/alpha feature/alpha
+
+# feature/beta
+git checkout -b feature/beta main
+echo "beta change" >> file-c.txt
+git add file-c.txt
+git commit -m "Beta: update file-c"
+git push origin feature/beta
+git branch -u origin/feature/beta feature/beta
+
+# old-branch
+git checkout -b old-branch main
+echo "old content" > old-file.txt
+git add old-file.txt
+git commit -m "Old: add old-file"
+git push origin old-branch
+
+# Push tags
+git push origin refs/tags/v1.0 refs/tags/v1.1
+
+# Return to feature/alpha as the working branch
+git checkout feature/alpha
+```
+
+[Check] Verify the topology:
+```bash
+git log --oneline --all --graph
+```
+Expected: branches `main`, `feature/alpha`, `feature/beta`, `old-branch` all visible with commits; tags `v1.0` and `v1.1` on `main`; `feature/alpha` diverges from `main` at the first commit.
+
+[Check] Verify rename detection is enabled (required for S05 and FS-04 S10):
+```bash
+git config diff.renames
+```
+Expected: prints `true`, `1`, or nothing (default — enabled). If it prints `false` or `0`, fix it:
+```bash
+git config diff.renames true
+```
+
+[User] Open the working repo folder in VS Code (`File → Open Folder` → select `$BASE/testrepo`).
+Expected: The GitBase Changes panel appears in the SCM view.
+
+### 0.2 — Verify extension activates (`FS-01 S02`)
+
+[User] Report the SCM group label shown under GitBase Changes.
+Expected: `HEAD · Select a base to begin` — `origin/HEAD` is not yet configured, so `detectDefaultBranch` finds nothing at all four detection steps.
+
+[Claude] Configure `origin/HEAD` and verify:
+```bash
+git remote set-head origin main
+git symbolic-ref refs/remotes/origin/HEAD
+```
+Expected output of the second command: `refs/remotes/origin/main`
+
+[User] Reload the VS Code window (`Developer: Reload Window`). Report the new label.
+Expected: `Branch · origin/main`
+
+Note: Auto-detection uses `origin/HEAD` directly (step 2 of `detectDefaultBranch` in `git.ts`) and does not require a local upstream tracking branch on the current branch.
+
+### 0.3 — Build extension from source (`FS-01 S03`)
+
+[Claude] Run the build in the extension source directory (adjust path to where the GitBase source lives):
+```bash
+cd /path/to/gitbase-extension
+npm install && npm run compile
+```
+Expected: exits with code 0, no TypeScript errors printed.
+
+[Check] Verify compiled output exists:
+```bash
+ls out/*.js 2>/dev/null || ls dist/*.js 2>/dev/null
+```
+Expected: at least one `.js` file listed.
+
+Note: This step validates the TypeScript type system. Any type errors in source would be caught here before runtime testing begins.
 
 ---
 
@@ -98,7 +227,7 @@ Expected (FS-03 S04): FILE_D appears with `D` decoration and strikethrough styli
 Expected (FS-03 S05): `renamed-test.txt` appears with `R` decoration showing the new name.
 Expected (FS-02 S12): `staged-test.txt` (staged) and `test-binary.png` (staged) both appear — staged changes are visible in the diff.
 
-Note (FS-03 S02): Untracked files appear in the GitBase list because `git diff <ref> --` includes untracked output. This is distinct from git's own SCM panel which tracks index state.
+Note (FS-03 S02): Untracked files appear in the GitBase list even though `git diff <ref>` does not report them — GitBase discovers them via a separate mechanism (e.g. `git ls-files --others`). This is distinct from git's own SCM panel which tracks only the index.
 
 Note (FS-03 S05): Rename detection requires `diff.renames` not set to `false` (verified in FS-01 S01). If FILE_D and FILE_A appear instead of an R entry, `diff.renames` is disabled — stop and fix before continuing.
 
@@ -174,9 +303,11 @@ Expected: The file `untracked-test.txt` opens directly (no diff).
 Expected: The git SCM panel does NOT expand to reveal the file and does NOT steal focus from the GitBase panel.
 
 [Check] Re-read `<data-dir>/User/settings.json`.
-Expected: `scm.autoReveal` is absent (if it was absent before the test) — the extension's `openWithoutAutoReveal` restores the original state using `inspect()`, which removes the key rather than writing `true` explicitly when the original value was absent.
 
-Note: `openWithoutAutoReveal` in `workarounds.ts` temporarily sets `scm.autoReveal = false` globally, then restores the original value in a `finally` block.
+- **If `scm.autoReveal` was absent before the test:** Expected: the key is still absent. `openWithoutAutoReveal` uses `inspect()` to detect no explicit value and removes the key rather than writing `true`, so no spurious entry appears.
+- **If `scm.autoReveal` was explicitly `true` before the test:** Expected: `"scm.autoReveal": true` is still present. The `finally` block restores it by calling `update(true)`, not by deleting the key.
+
+Note: `openWithoutAutoReveal` in `workarounds.ts` temporarily sets `scm.autoReveal = false` globally, then restores the original value in a `finally` block using `inspect()` to distinguish "absent" from "explicitly true".
 
 ### C.4 — Inline icon on U/A file: fragment-stripping path (`FS-04 S03b`)
 
@@ -322,22 +453,24 @@ echo "# test modification" >> FILE_M
 
 **Precondition:** Base is `Branch · origin/main`. At least one M file is present. (We will use a specific tracked file for this destructive operation.)
 
-[Claude] Identify the file to use (must be tracked on both HEAD and origin/main):
-```
+[Claude] Identify the file to use — it must be tracked on both HEAD and origin/main:
+```bash
 git diff $(git merge-base HEAD origin/main) HEAD --name-only | head -1
 ```
-Call this FILE_FALLBACK. Commit FILE_FALLBACK's deletion from origin/main:
-```
+Call this FILE_FALLBACK. Delete it from `origin/main` by switching branches, committing, and pushing:
+```bash
+git checkout main
 git rm FILE_FALLBACK
 git commit -m "delete FILE_FALLBACK from base for FS-04 S14 test"
 git push origin main
+git checkout feature/alpha
 ```
 Then fetch in the test repo:
-```
+```bash
 git fetch origin
 ```
 
-Note: At this point, FILE_FALLBACK still exists on `feature/alpha` (HEAD has it), but `origin/main` no longer has it. The diff list will show FILE_FALLBACK as M (HEAD has it, base does not — the merge-base logic picks up the deleted-from-base case).
+Note: FILE_FALLBACK still exists on `feature/alpha` with its modified content, so the diff (computed against the merge-base, which predates the deletion on `main`) still shows it as M. The content provider, however, fetches left-side content via `git show origin/main:<file>`, which now exits non-zero because `origin/main` deleted the file — triggering the fallback placeholder on the left side of the diff editor.
 
 [User] Click FILE_FALLBACK in the GitBase Changes panel.
 
@@ -354,8 +487,10 @@ Note: For SHA-based refs (e.g. a merge-base SHA), the fallback reads `(file did 
 
 [Reset] Restore FILE_FALLBACK on origin/main:
 ```
+git checkout main
 git revert HEAD --no-edit
 git push origin main
+git checkout feature/alpha
 git fetch origin
 ```
 
@@ -398,7 +533,13 @@ Expected label: `Branch · feature/beta`
 ```
 git diff $(git merge-base HEAD feature/beta) HEAD --name-only
 ```
-Expected: The files listed match the files shown in the GitBase SCM list. The tip diff (`git diff feature/beta HEAD --name-only`) should differ or be a superset.
+Expected: The files listed match the files shown in the GitBase SCM list.
+
+[Check] Verify the tip diff is a superset of the merge-base diff — confirming the test is meaningful:
+```
+git diff feature/beta HEAD --name-only
+```
+Expected: The output contains additional files not in the merge-base diff above (at minimum `file-c.txt` and `README.md`, which are in `feature/beta` but not in `feature/alpha`). If the two diffs produce identical output, the topology is wrong and the merge-base distinction cannot be observed.
 
 Note: Branch-type bases always use the merge-base (`getMergeBase` in `git.ts`), not the branch tip. This is what makes GitBase show "your work since the fork point" rather than "everything different from the tip".
 
@@ -521,6 +662,13 @@ Expected label: `Branch · origin/feature/alpha`
 
 [Check] Verify the stored ref is `origin/feature/alpha` and the stored type is `Branch`.
 
+[Check] Verify merge-base logic applies — the SCM list must match the merge-base diff, not a direct diff to the branch tip:
+```bash
+git merge-base HEAD origin/feature/alpha
+git diff $(git merge-base HEAD origin/feature/alpha) --name-only
+```
+Expected: The file list from the command matches the files shown in the GitBase SCM list, confirming the Branch path (merge-base diff) is taken rather than the Commit path (direct SHA diff).
+
 Note: `detectRefType` checks `refs/remotes/<ref>` after `refs/heads/` and `refs/tags/`, so remote branch names are correctly classified as `Branch` rather than falling through to `Commit`.
 
 ---
@@ -571,9 +719,14 @@ echo "# external edit" >> FILE_M
 
 Expected: Within approximately 500ms, FILE_M appears in (or updates in) the SCM list automatically. No manual refresh is needed.
 
+[Claude] Revert the external edit to restore a clean working tree for the next step:
+```
+git checkout -- FILE_M
+```
+
 ### E.4 — Timestamp-only change is suppressed (`FS-03 S11`)
 
-**Precondition:** All working-tree files match their committed content (apply `git checkout .` to ensure this, being careful not to destroy test state — do this at a point where no test state is needed from the working tree).
+**Precondition:** All working-tree files match their committed content (established by the cleanup above).
 
 [Claude] Touch a tracked file to update its mtime without changing its content:
 ```
@@ -591,13 +744,15 @@ Expected: FILE_M does NOT appear in the list. Timestamp-only changes are suppres
 
 [User] Open a diff for FILE_M by clicking it in the GitBase panel (if not already open). Observe the left side — it shows the `origin/main` version of FILE_M.
 
-[Claude] Advance the base branch by creating a new commit and pushing it to the bare origin:
-```
+[Claude] Advance `origin/main` by committing on `main` and pushing. We are on `feature/alpha`, so switch branches first:
+```bash
+git checkout main
 git commit --allow-empty -m "advance base for cache invalidation test"
 git push origin main
+git checkout feature/alpha
 ```
 Then fetch in the test repo so the new commit is visible:
-```
+```bash
 git fetch origin
 ```
 

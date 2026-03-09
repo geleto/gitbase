@@ -16,6 +16,8 @@
 - Internet access
 - Working branch: `feature/alpha`
 
+> **Shell:** All `[Claude]` commands use bash syntax (`$(…)`, `mktemp`, `grep`, etc.). Run them from Claude Code's integrated bash shell, Git Bash, or WSL — not from PowerShell directly.
+
 ## Optimisation Rationale
 
 FS-08 and FS-09 are already the most efficient structure for PR testing — they depend on a live GitHub connection and real PR state that cannot be parallelised. Within this plan, FS-08 S08 and S09 (dirty-state picker label) are combined into one picker-open observation. FS-09 S05, S06, S07 flow naturally as one sequence (commit in detached HEAD → cancel → confirm). FS-05 S04 (PR label format) is verified inline during FS-08 S01 rather than separately.
@@ -76,12 +78,20 @@ Note: `resolvePrMeta` returns `'not-found'` for HTTP 404, which `picker.ts` hand
 
 ### A.4 — Base branch not yet fetched locally (`FS-08 S05`)
 
-[Claude] Remove cached remote refs to simulate a first-time fetch:
+[User] Find the PR's target base branch name from the GitHub PR page (shown next to "into" in the PR header). Call it `<base-branch>`.
+
+[Claude] Delete the local remote-tracking ref for that branch to simulate it never having been fetched:
 ```
-git remote prune origin
+git branch -dr origin/<base-branch>
 ```
 
-[User] Enter a valid PR URL via `GitHub PR · my work vs target…`.
+[Check] Verify the ref is gone before proceeding:
+```
+git rev-parse --verify origin/<base-branch> 2>/dev/null && echo "still exists" || echo "deleted OK"
+```
+Expected: `deleted OK`.
+
+[User] Enter the same PR URL via `GitHub PR · my work vs target…`.
 
 Expected: The extension fetches the base branch and the label updates correctly.
 
@@ -179,10 +189,12 @@ rm new-untracked.txt
 
 **Precondition:** `origin/<baseRef>` exists locally (from a previous fetch). The remote base branch has since advanced.
 
-[Claude] Advance the remote base branch by pushing a new commit to the bare origin:
-```
+[Claude] Advance `origin/main` by committing on `main`. We are on `feature/alpha`, so switch branches first:
+```bash
+git checkout main
 git commit --allow-empty -m "remote advance for stale test"
 git push origin main
+git checkout feature/alpha
 ```
 Do NOT run `git fetch` in the working repo.
 
@@ -229,12 +241,20 @@ Expected: After authentication, the PR resolves successfully and the label updat
 
 ### A.10 — Base-branch fetch failure produces an immediate error (`FS-08 S11`)
 
-**Precondition:** GitHub API returns valid PR metadata, but `origin/<baseRef>` does not exist locally AND the fetch will fail. Simulate by pruning the remote ref, then temporarily corrupting the origin URL.
+**Precondition:** GitHub API returns valid PR metadata, but `origin/<baseRef>` does not exist locally AND the fetch will fail.
 
-[Claude] Prune the base branch ref locally:
+[User] Identify `<baseRef>` from the GitHub PR page (the branch name shown next to "into").
+
+[Claude] Delete the local remote-tracking ref so it does not exist locally, then corrupt the origin URL so the fetch fails:
 ```
-git remote prune origin
+git branch -dr origin/<baseRef>
 ```
+Verify it is gone:
+```
+git rev-parse --verify origin/<baseRef> 2>/dev/null && echo "still exists" || echo "deleted OK"
+```
+Expected: `deleted OK`.
+
 Then temporarily change origin to an unreachable URL:
 ```
 git remote set-url origin file:///nonexistent-path
@@ -344,6 +364,15 @@ git rev-parse stash@{0}
 Note this SHA.
 
 Expected: The exit item description shows `return to feature/alpha · pop stash`.
+
+[Check] Verify persistence of the stash indicator across a VS Code reload (`FS-09 S11` — stash variant):
+
+[User] Reload the VS Code window (`Developer: Reload Window`).
+
+Expected: `← Exit GitHub PR Review` still appears at the top of the picker after reload.
+Expected: The exit description shows `return to feature/alpha · pop stash` — both the `prevBranch` and the stash indicator are preserved.
+
+Note: `prReviewState` is persisted to workspaceState on every write; the stash indicator (`hasPendingStash: true`) is stored alongside `prevBranch`, so both survive a reload.
 
 ### B.5 — Exit restores working tree from stash (`FS-09 S03` via stash path)
 
@@ -550,9 +579,9 @@ Expected: The SCM label reverts to the previous base.
 
 [Check] Verify no crash and the extension continues to function.
 
-[Claude] Recreate `feature/alpha` and switch to it:
+[Claude] Recreate `feature/alpha` at its original remote tip and switch to it:
 ```
-git checkout -b feature/alpha
+git checkout -b feature/alpha origin/feature/alpha
 git push origin feature/alpha 2>/dev/null || true
 ```
 
@@ -588,10 +617,10 @@ Expected: An additional warning: `Your stashed changes are saved as "gitbase: ex
 
 [Check] Verify the exit stash is still in the stash list.
 
-[Claude] Clean up: drop the stash and recreate `feature/alpha`:
+[Claude] Clean up: drop the stash and recreate `feature/alpha` at its original remote tip:
 ```
 git stash drop
-git checkout -b feature/alpha
+git checkout -b feature/alpha origin/feature/alpha
 git push origin feature/alpha 2>/dev/null || true
 ```
 
@@ -604,7 +633,7 @@ echo "dirty for stash sha test" >> README.md
 
 [User] Open the picker → `GitHub PR · PR changes… (will stash)` → enter the PR URL.
 
-[Check] Capture the gitbase stash SHA:
+[Claude] Capture and note the gitbase stash SHA (used to confirm it is the one that gets popped):
 ```
 git rev-parse stash@{0}
 ```
@@ -711,7 +740,9 @@ Note: `provider.ts` stores `prevBaseType = undefined` when the previous base was
 
 ### B.17 — Auth prompt cancelled during PR entry (`FS-09 S15`)
 
-**Precondition:** Private GitHub repo, user is NOT signed in.
+**Precondition:** Private GitHub repo. A.9 signed the user in; sign out first.
+
+[User] Open the Accounts menu (bottom-left of the VS Code window) → click the GitHub account entry → `Sign out`.
 
 [User] Open the picker → `GitHub PR · PR changes…` → enter a PR URL from the private repo.
 
@@ -731,28 +762,42 @@ Note: Cancelling `getSession({ createIfNone: true })` causes it to throw; the `c
 
 ### B.18 — PR entry checkout failure: clean working tree (`FS-09 S16`)
 
-**Precondition:** Clean working tree. Simulate checkout failure by temporarily making the PR head SHA unavailable (e.g. use a shallow clone or corrupt the origin URL after metadata is fetched — this is difficult to reproduce exactly; note as a manual/environment-dependent scenario).
+**Precondition:** Clean working tree.
 
-[User] Open the picker → `GitHub PR · PR changes…` → enter a valid PR URL (in a configuration where the checkout will fail).
+[Claude] Install a git alias that makes `git checkout` always fail, to simulate a checkout error:
+```
+git config alias.checkout '!echo "simulated checkout failure" >&2 && exit 1'
+```
+
+[User] Open the picker → `GitHub PR · PR changes…` → enter a valid PR URL.
 
 Expected: Error: `Failed to switch to PR #N. Ensure origin points to GitHub.`
 Expected: No second warning (clean working tree means no stash was created).
 Expected: HEAD unchanged, still on `feature/alpha`.
 
-[Check] Verify stash list is empty.
+[Check] Verify stash list is empty:
+```
+git stash list
+```
 
-Note: If this scenario cannot be reliably reproduced in the current environment, document it as "verified by code review" and skip.
+[Claude] Remove the alias:
+```
+git config --unset alias.checkout
+```
 
 ### B.19 — PR entry checkout failure after stash was created (`FS-09 S17`)
 
-**Precondition:** Dirty working tree (one modified file). Checkout made to fail after the stash step.
+**Precondition:** Dirty working tree (one modified file).
 
-[Claude] Modify README.md:
+[Claude] Modify README.md and install the checkout-failure alias:
 ```
 echo "dirty for checkout fail test" >> README.md
+git config alias.checkout '!echo "simulated checkout failure" >&2 && exit 1'
 ```
 
-[User] Open the picker → `GitHub PR · PR changes… (will stash)` → enter a valid PR URL (in a configuration where the checkout will fail after the stash step).
+Note: `git stash push` uses `git reset --hard` internally, not `git checkout`, so the alias does not block the stash step — only the subsequent detach-HEAD checkout fails.
+
+[User] Open the picker → `GitHub PR · PR changes… (will stash)` → enter a valid PR URL.
 
 Expected: Error: `Failed to switch to PR #N. Ensure origin points to GitHub.`
 Expected: A second warning immediately after: `Your stashed changes could not be restored automatically — they are still safe in the stash. Run "git stash pop" to apply them; if there are conflicts, resolve them then run "git stash drop".` with a `Copy command` button.
@@ -765,13 +810,16 @@ git stash list
 
 [Check] Verify HEAD is still on `feature/alpha`.
 
-[Reset] Manually restore the working tree:
+[Claude] Remove the alias before restoring the stash (the alias must be gone before `git stash pop` runs):
+```
+git config --unset alias.checkout
+```
+
+[Reset] Restore the working tree:
 ```
 git stash pop
 git checkout -- README.md
 ```
-
-Note: If this scenario cannot be reliably reproduced, document as "verified by code review" and skip.
 
 ### B.20 — Exit with stash pop conflict (`FS-09 S18`)
 

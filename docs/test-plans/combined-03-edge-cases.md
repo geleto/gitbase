@@ -18,6 +18,8 @@ None — all scenarios in this plan are edge cases that require special setup an
 - VS Code is open on the test repo; GitBase Changes panel shows `Branch · origin/main`
 - Extension is built and installed
 
+> **Shell:** All `[Claude]` commands use bash syntax (`$(…)`, `mktemp`, `grep`, etc.). Run them from Claude Code's integrated bash shell, Git Bash, or WSL — not from PowerShell directly.
+
 ## Optimisation Rationale
 
 These scenarios are grouped together because they are all isolated: each requires special setup (disabled extensions, a separate scratch repo, 50+ commits, destructive tag operations) that cannot be shared with the normal-operation or persistence plans. Within this plan, scenarios that use the same scratch repo are sequenced together to avoid redundant repo creation.
@@ -108,6 +110,14 @@ Expected label: `Branch · origin/main`
 
 **Precondition:** Tags `v1.0` and `v1.1` exist (or were recreated after any previous test that deleted them).
 
+[Claude] Capture the tag SHAs before deleting (they cannot be recovered from the log once the local refs are gone):
+```
+V1_0_SHA=$(git rev-parse v1.0)
+V1_1_SHA=$(git rev-parse v1.1)
+echo "v1.0 → $V1_0_SHA"
+echo "v1.1 → $V1_1_SHA"
+```
+
 [Claude] Delete all tags from the test repo:
 ```
 git tag -d $(git tag -l)
@@ -123,14 +133,10 @@ Expected: No error message, no notification — behaves identically to cancellin
 
 Note: The same silent-cancel behaviour applies to the Branch picker on an unborn repo (no refs yet) and the Commit picker on a repo with no commits. The Tag picker empty case is common: many repos have no tags at all.
 
-[Reset] Restore the tags (use the SHAs from the test repo's history):
+[Reset] Restore the tags using the SHAs captured before deletion:
 ```
-git log --oneline --all | grep -E 'v1\.[01]'
-```
-Identify the commits these tags originally pointed to, then recreate:
-```
-git tag v1.0 <v1.0-commit-sha>
-git tag v1.1 <v1.1-commit-sha>
+git tag v1.0 $V1_0_SHA
+git tag v1.1 $V1_1_SHA
 git push origin refs/tags/v1.0 refs/tags/v1.1
 ```
 

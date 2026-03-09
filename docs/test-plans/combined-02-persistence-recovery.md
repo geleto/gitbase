@@ -19,6 +19,8 @@
 - VS Code is open on the test repo; GitBase Changes panel shows `Branch · origin/main`
 - Extension is active
 
+> **Shell:** All `[Claude]` commands use bash syntax (`$(…)`, `mktemp`, `grep`, etc.). Run them from Claude Code's integrated bash shell, Git Bash, or WSL — not from PowerShell directly.
+
 ## Optimisation Rationale
 
 This plan minimises window reloads — the most expensive user action — by batching scenarios that can share a reload. FS-06 S01 and S02 are merged into a single reload. The auto-detect fallback scenarios (S09, S10, S11) each require exactly one reload; they are sequenced to share setup and teardown steps. Deleted-ref recovery scenarios (S03–S05c) do not require reloads — the provider validates the ref on every periodic refresh.
@@ -66,13 +68,7 @@ Expected label: `Branch · origin/main`
 
 ### B.1 — Auto-detect `origin/main` when no base is stored (`FS-06 S06`)
 
-[Claude] Clear the workspaceState base key for this repo. The key is `taskChanges.base.<repo-root-path>`. Use the VS Code developer tools (Help → Toggle Developer Tools → Application → Storage → IndexedDB) to delete the key, OR use the extension's built-in clear command if available, OR simulate by directly editing the SQLite workspaceStorage database. If none of these are accessible, skip to B.1 verification after the next step instead: set a non-default base, reload, and verify the auto-detect fires.
-
-Alternatively: set the base to a ref that does not exist so the provider clears it on startup:
-```
-# This approach works without direct workspaceState access:
-# After the reload the provider will find origin/HEAD → origin/main and auto-detect it
-```
+[User] Clear the workspaceState base key for this repo via VS Code developer tools: `Help → Toggle Developer Tools → Application tab → Storage → IndexedDB` → find the workspaceStorage entry for this window → locate the key `taskChanges.base.<repo-root-path>` → delete it.
 
 [User] Reload the VS Code window.
 
@@ -106,12 +102,16 @@ Expected (FS-06 S04): The SCM label has automatically updated to `Branch · orig
 
 [Check] Verify the stored base key is now `origin/main`.
 
-Note: Auto-recovery runs before the notification fires. If `detectDefaultBranch` succeeds (it finds `origin/HEAD → origin/main`), the extension recovers silently and shows an info notification. If it fails (no default detectable), it shows a warning with a `Select Base` button — that path is tested in C.3.
+Note: Auto-recovery runs before the notification fires. If `detectDefaultBranch` succeeds (it finds `origin/HEAD → origin/main`), the extension recovers silently and shows an info notification. If it fails (no default detectable), it shows a warning with a `Select Base` button — that path is tested in C.4.
 
-[Reset] Recreate `feature/beta` for use in later scenarios:
+[Reset] Recreate `feature/beta` at its canonical commit (branched from `v1.1` with a commit to `file-c.txt`):
 ```
-git checkout -b feature/beta
-git push origin feature/beta
+git checkout -b feature/beta v1.1
+echo "beta change" >> file-c.txt
+git add file-c.txt
+git commit -m "Beta: update file-c"
+git push origin feature/beta --force
+git branch -u origin/feature/beta feature/beta
 git checkout feature/alpha
 ```
 
@@ -130,12 +130,12 @@ Wait for the periodic refresh.
 
 [User] Observe the notification area and the GitBase label.
 
-Expected: A notification reads: `GitBase: base ref "v1.0" no longer exists. Select a new base to continue.` OR the auto-recovery info notification if `origin/main` is detectable (same logic as C.1 — auto-recovery fires first, notification wording reflects the outcome).
-Expected: SCM label updates to `Branch · origin/main`.
+Expected: A warning notification reads: `GitBase: base ref "v1.0" no longer exists. Select a new base to continue.`
+Expected: Despite the warning wording, the extension also auto-recovers to `origin/main` — `detectDefaultBranch` succeeds (origin/HEAD is configured), so the SCM label updates to `Branch · origin/main` without user action.
 
 [Check] Verify the stored base key is now `origin/main`.
 
-Note: `provider.ts:106` runs `git rev-parse --verify <ref>` regardless of ref type. A deleted tag is caught by the same validation path as a deleted branch.
+Note: `provider.ts:106` runs `git rev-parse --verify <ref>` regardless of ref type. A deleted tag is caught by the same validation path as a deleted branch. Per source scenario FS-06 S05b, a deleted tag shows a warning notification even when auto-recovery succeeds — this differs from deleted branches (C.1) which show an info notification on successful recovery.
 
 [Reset] Recreate `v1.0` pointing to its original commit:
 ```
@@ -146,20 +146,31 @@ git push origin refs/tags/v1.0
 
 ### C.3 — Orphaned commit SHA triggers recovery (`FS-06 S05c`)
 
-[Claude] Create a temporary commit on a detached HEAD, capture its SHA, then abandon it:
-```
+[Claude] Create a temporary commit on a detached HEAD and capture its SHA:
+```bash
 git checkout --detach HEAD
 echo "orphan content" > orphan-test.txt
 git add orphan-test.txt
 git commit -m "orphan commit for FS-06 S05c"
 ORPHAN_SHA=$(git rev-parse HEAD)
 echo "Orphan SHA: $ORPHAN_SHA"
+```
+
+[User] Open the picker → Enter ref… → paste `$ORPHAN_SHA` → confirm.
+Expected label: `Commit · orphan commit for FS-06 S05c`
+
+This sets the stored base to `$ORPHAN_SHA` **before** the commit is pruned.
+
+[Claude] Abandon the orphan commit and return to `feature/alpha`:
+```bash
 git checkout feature/alpha
+```
+
+[Claude] Prune the orphaned commit from the object store:
+```bash
 git reflog expire --expire=now --all
 git gc --prune=now
 ```
-
-[Claude] Manually set the workspaceState base key to `$ORPHAN_SHA`. (If direct workspaceState access is not available, use the picker: Enter ref… → paste `$ORPHAN_SHA` before the GC step, then run the GC.)
 
 Wait for the periodic refresh (or trigger one by clicking refresh).
 
@@ -201,19 +212,9 @@ Expected: The SCM label falls back to `HEAD · Select a base to begin` (base cle
 
 [Check] Verify the stored base key is `undefined` or absent.
 
-**Now verify FS-05 S05 using this same state:**
-
-[Claude] Clear the workspaceState base key (already cleared by the recovery above).
-
-[User] Reload the VS Code window.
-
-Expected (FS-05 S05): After reload, the SCM label shows `HEAD · Select a base to begin` and stays there — it does NOT snap to `Branch · origin/main` because `detectDefaultBranch` returns `null` (no `origin/HEAD`, no `origin/main`, no `origin/master`, no upstream tracking branch).
-
-Note: In a repo that has `origin/HEAD → origin/main`, clearing workspaceState and reloading will show this label only transiently (~400ms) before auto-detect fires and sets `Branch · origin/main`. To observe the steady-state "no base" label, auto-detection must have nothing to find — which is the state we are in now.
-
 ### C.5 — Warning notification `Select Base` button opens picker (`FS-06 S05`)
 
-**Precondition:** The warning notification from C.4 is still visible, or a fresh one can be triggered by the same state.
+**Precondition:** The warning notification from C.4 is still visible — do NOT reload VS Code yet; reloading clears the notification tray.
 
 [User] Click the `Select Base` button in the warning notification.
 
@@ -221,15 +222,29 @@ Expected: The base picker opens.
 
 [User] Press Escape to close the picker without selecting.
 
+**Now verify FS-05 S05 in the same no-default-detectable state:**
+
+The workspaceState base key is already `undefined` (cleared by the C.4 recovery). `origin/HEAD` and upstream tracking are still removed.
+
+[User] Reload the VS Code window.
+
+Expected (FS-05 S05): After reload, the SCM label shows `HEAD · Select a base to begin` and stays there — it does NOT snap to `Branch · origin/main` because `detectDefaultBranch` returns `null` (no `origin/HEAD`, no `origin/main`, no `origin/master`, no upstream tracking branch).
+
+Note: In a repo that has `origin/HEAD → origin/main`, clearing workspaceState and reloading will show this label only transiently (~400ms) before auto-detect fires and sets `Branch · origin/main`. To observe the steady-state "no base" label, auto-detection must have nothing to find — which is the state we are in now.
+
 [Reset] Restore `origin/HEAD` and upstream tracking before the next section:
 ```
 git remote set-head origin -a
 git branch --set-upstream-to=origin/main
 ```
-Recreate `feature/beta`:
+Recreate `feature/beta` at its canonical commit:
 ```
-git checkout -b feature/beta
-git push origin feature/beta
+git checkout -b feature/beta v1.1
+echo "beta change" >> file-c.txt
+git add file-c.txt
+git commit -m "Beta: update file-c"
+git push origin feature/beta --force
+git branch -u origin/feature/beta feature/beta
 git checkout feature/alpha
 ```
 
@@ -240,7 +255,7 @@ Expected label: `Branch · origin/main`
 
 ## Section D: Auto-Detect Fallback Chain
 
-**Purpose:** Verify each step of `detectDefaultBranch` (`git.ts`) in order. Steps 2–4 are tested here; step 1 (non-origin remote) is tested in D.4.
+**Purpose:** Verify each step of `detectDefaultBranch` (`git.ts`) in order. Steps 2–4 are tested here; step 1 (non-origin remote) is tested in D.3.
 
 Each subsection requires a window reload. They are sequenced so each setup is a small delta from the previous reset.
 
@@ -415,10 +430,14 @@ git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null
 
 Expected: Working tree clean, on `feature/alpha`, `origin/HEAD` → `origin/main`, upstream is `origin/main`.
 
-If `feature/beta` was deleted and not restored during this plan, recreate it:
+If `feature/beta` was deleted and not restored during this plan, recreate it at its canonical commit:
 ```
-git checkout -b feature/beta 2>/dev/null || true
-git push origin feature/beta 2>/dev/null || true
+git checkout -b feature/beta v1.1 2>/dev/null || git checkout feature/beta
+echo "beta change" >> file-c.txt
+git add file-c.txt
+git commit -m "Beta: update file-c" 2>/dev/null || true
+git push origin feature/beta --force 2>/dev/null || true
+git branch -u origin/feature/beta feature/beta 2>/dev/null || true
 git checkout feature/alpha
 ```
 

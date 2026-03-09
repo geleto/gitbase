@@ -573,7 +573,7 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - [Claude] verify stored base key updated to `origin/main`
 - Note: the validation at `provider.ts:106` runs `git rev-parse --verify <ref>` regardless of ref type; a deleted tag is caught by the same path as a deleted branch
 
-**S05c · Orphaned commit SHA triggers same warning (no auto-recovery)**
+**S05c · Orphaned commit SHA triggers warning with attempted auto-recovery**
 - [Claude] set base to a commit SHA that will become unreachable: create a temporary commit on a detached HEAD, note its SHA, then `git reset --hard` away from it so it is only in the reflog
 - [Claude] wait for the reflog to expire or force-expire: `git reflog expire --expire=now --all && git gc --prune=now`
 - Expected: warning notification `GitBase: base ref "<sha>" no longer exists. Select a new base to continue.`
