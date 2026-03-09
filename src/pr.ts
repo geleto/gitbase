@@ -97,7 +97,7 @@ export async function resolvePr(
   owner: string,
   repo: string,
   prNumber: number,
-): Promise<BaseSelection | 'checkout-failed' | 'checkout-failed-stash-left' | 'fetch-failed' | 'not-found' | 'auth-cancelled' | undefined> {
+): Promise<BaseSelection | 'checkout-failed' | 'checkout-failed-stash-left' | 'fetch-failed' | 'stash-failed' | 'not-found' | 'auth-cancelled' | undefined> {
   const meta = await resolvePrMeta(owner, repo, prNumber)
   if (meta === 'not-found') return 'not-found'
   if (meta === 'auth-cancelled') return 'auth-cancelled'
@@ -117,8 +117,14 @@ export async function resolvePr(
 
     let stashSha: string | undefined
     if (isDirty) {
-      if (await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: PR review') !== null) {
-        stashSha = (await gitOrNull(root, 'rev-parse', 'stash@{0}'))?.trim() ?? undefined
+      if (await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: PR review') === null) {
+        return 'stash-failed'
+      }
+      stashSha = (await gitOrNull(root, 'rev-parse', 'stash@{0}'))?.trim() ?? undefined
+      if (!stashSha) {
+        // SHA capture failed — pop the stash we just created so the user's changes are restored.
+        await gitOrNull(root, 'stash', 'pop')
+        return 'stash-failed'
       }
     }
 

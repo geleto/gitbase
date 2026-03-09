@@ -194,6 +194,12 @@ export async function pickBase(
       )
       return undefined
     }
+    if (result === 'stash-failed') {
+      void vscode.window.showErrorMessage(
+        'GitBase: could not stash your changes before entering PR review. Check that your working tree is in a valid state.'
+      )
+      return undefined
+    }
     if (result === 'checkout-failed' || result === 'checkout-failed-stash-left') {
       void vscode.window.showErrorMessage(`Failed to switch to PR #${prNumber}. Ensure origin points to GitHub.`)
       if (result === 'checkout-failed-stash-left') {
