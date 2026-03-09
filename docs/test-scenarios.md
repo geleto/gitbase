@@ -540,7 +540,7 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 **S03 · Deleted branch triggers notification**
 - [Claude] `git branch -D feature/beta` and `git push origin --delete feature/beta`
 - Precondition: stored base is `feature/beta`
-- If `origin/main` (or other default) is detectable: expected info notification `GitBase: base ref "feature/beta" was deleted; auto-recovered to origin/main.` (no button). No user action needed; SCM label updates automatically. `Select Base` button is absent.
+- If `origin/main` (or other default) is detectable: expected info notification `GitBase: base ref "feature/beta" no longer exists; auto-recovered to origin/main.` (no button). No user action needed; SCM label updates automatically. `Select Base` button is absent.
 - If no default is detectable: expected warning notification `GitBase: base ref "feature/beta" no longer exists. Select a new base to continue.` with `Select Base` button.
 - Note: auto-recovery now runs before the notification fires, so the notification wording matches the outcome.
 

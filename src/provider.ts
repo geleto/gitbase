@@ -133,7 +133,7 @@ export class TaskChangesProvider implements vscode.Disposable {
         this.syncLabel()
         // Inform, don't alarm — no action needed.
         void vscode.window.showInformationMessage(
-          `GitBase: base ref "${ref}" was deleted; auto-recovered to ${detected}.`
+          `GitBase: base ref "${ref}" no longer exists; auto-recovered to ${detected}.`
         )
         this.schedule()
       } else {

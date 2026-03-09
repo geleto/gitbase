@@ -97,7 +97,7 @@ Wait a moment (up to ~2 seconds) for the provider's periodic refresh to fire.
 
 [User] Observe the notification area and the GitBase label.
 
-Expected (FS-06 S03): An info notification (not a warning) reads: `GitBase: base ref "feature/beta" was deleted; auto-recovered to origin/main.` No `Select Base` button appears.
+Expected (FS-06 S03): An info notification (not a warning) reads: `GitBase: base ref "feature/beta" no longer exists; auto-recovered to origin/main.` No `Select Base` button appears.
 Expected (FS-06 S04): The SCM label has automatically updated to `Branch · origin/main`. No user action was required.
 
 [Check] Verify the stored base key is now `origin/main`.
