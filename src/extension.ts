@@ -130,6 +130,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       if (!provider) return
       const root  = provider.scm.rootUri!.fsPath
       const fp    = nodePath.relative(root, uri.fsPath).replace(/\\/g, '/')
+      if (resource.contextValue === 'U') {
+        void vscode.window.showInformationMessage(`Patch not available for untracked file: ${nodePath.basename(uri.fsPath)}`)
+        return
+      }
       const patch = await gitOrNull(root, 'diff', provider.lastDiffRef, '--', fp)
       if (patch) {
         await vscode.env.clipboard.writeText(patch)
