@@ -44,9 +44,14 @@ export async function pickBase(
     { label: 'Enter ref…', key: 'ref'    },
     { label: '', kind: vscode.QuickPickItemKind.Separator, key: '' },
     { label: 'GitHub PR · my work vs target…',   description: 'compare current branch to PR base', key: 'pr-base'   },
-    { label: isDirty ? 'GitHub PR · PR changes… (will stash)' : 'GitHub PR · PR changes…',
-      description: prReviewState ? 'exit current review first' : 'compare PR to its base', key: 'pr-review' },
   )
+  // Hide PR changes entry while already in a review — the exit item at the top is the relevant action.
+  if (!prReviewState) {
+    typeItems.push({
+      label: isDirty ? 'GitHub PR · PR changes… (will stash)' : 'GitHub PR · PR changes…',
+      description: 'compare PR to its base', key: 'pr-review',
+    })
+  }
 
   const typeItem = await vscode.window.showQuickPick(typeItems, { placeHolder: 'Select base type' })
   if (!typeItem) return undefined
@@ -152,13 +157,6 @@ export async function pickBase(
 
   // ── GitHub Pull Request flows ────────────────────────────────────────────────
   if (typeItem.key === 'pr-base' || typeItem.key === 'pr-review') {
-    if (typeItem.key === 'pr-review' && prReviewState) {
-      void vscode.window.showWarningMessage(
-        'Already in GitHub PR Review. Exit the current review first before starting a new one.',
-      )
-      return undefined
-    }
-
     const prUrl = await vscode.window.showInputBox({
       prompt: 'Enter GitHub Pull Request URL',
       placeHolder: 'https://github.com/owner/repo/pull/123',

@@ -743,20 +743,15 @@ git stash list
 git checkout -- README.md 2>/dev/null || true
 ```
 
-### B.14 — Cannot enter PR review while already in it (`FS-09 S12`)
+### B.14 — PR review entry item is hidden while already in review (`FS-09 S12`)
 
 [User] Open the picker → `GitHub PR · PR changes…` → enter a PR URL (enter review mode).
 
-[User] Open the picker again. Before selecting anything, observe the `GitHub PR · PR changes…` item's description.
+[User] Open the picker again and scan the full list.
 
-Expected: The description reads `exit current review first` — the constraint is surfaced before selecting.
+Expected: `GitHub PR · PR changes…` is **absent** — it is hidden when `prReviewState` is set.
 Expected: `← Exit GitHub PR Review` is visible at the top of the picker.
-
-[User] Select `GitHub PR · PR changes…`.
-
-Expected: A warning notification: `Already in GitHub PR Review. Exit the current review first before starting a new one.`
-Expected: HEAD is unchanged (still detached at PR A's SHA).
-Expected: `prReviewState` is unchanged; `← Exit GitHub PR Review` still appears.
+Expected: No warning notification is needed — the picker itself communicates the state.
 
 [User] Open the picker → `← Exit GitHub PR Review` to exit before proceeding.
 
