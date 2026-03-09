@@ -807,6 +807,7 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - Expected: `git fetch origin` runs and the SCM list updates automatically (the `Fetch Now` handler calls `onRefreshNeeded` which triggers `schedule()`)
 - [Claude] verify: `git rev-parse origin/main` now equals the remote SHA recorded above
 - Expected: after the fetch, the diff reflects the current remote base branch; the SCM list may shrink or expand
+- Note: if the fetch fails (network error or misconfigured remote), an error notification `GitBase: git fetch failed. Check your network connection and remote configuration.` appears and the SCM list is not refreshed
 - Note: the extension avoids fetching on every base selection to stay fast and offline-friendly. The `Fetch Now` button lets the user update on demand without leaving VS Code.
 
 **S11 · Base-branch fetch failure produces an immediate error**

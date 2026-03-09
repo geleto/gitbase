@@ -215,8 +215,12 @@ export async function pickBase(
           'Fetch Now'
         ).then(async action => {
           if (action === 'Fetch Now') {
-            await gitOrNull(root, 'fetch', 'origin')
-            onRefreshNeeded?.()
+            const ok = await gitOrNull(root, 'fetch', 'origin')
+            if (ok === null) {
+              void vscode.window.showErrorMessage('GitBase: git fetch failed. Check your network connection and remote configuration.')
+            } else {
+              onRefreshNeeded?.()
+            }
           }
         })
       }

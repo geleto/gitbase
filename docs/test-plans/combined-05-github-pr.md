@@ -231,6 +231,8 @@ git rev-parse origin/main
 ```
 Expected: Now equals the remote SHA recorded above (not the stale one).
 
+Note: If the fetch fails (network error), an error notification `GitBase: git fetch failed. Check your network connection and remote configuration.` appears and the SCM list is not refreshed.
+
 Note: The extension avoids fetching on every base selection to stay fast and offline-friendly. The `Fetch Now` button lets the user update on demand without leaving VS Code.
 
 ### A.9 — Private repo triggers auth prompt (`FS-08 S02`)
