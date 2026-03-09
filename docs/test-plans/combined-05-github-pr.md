@@ -519,7 +519,7 @@ git stash pop
 git checkout -- README.md
 ```
 
-### B.9 — Detached commits warning on exit: Cancel then confirm (`FS-09 S05` + `FS-09 S06` + `FS-09 S07`)
+### B.9 — Detached commits warning: Cancel and Exit Anyway (`FS-09 S05` + `FS-09 S06` + `FS-09 S07`)
 
 [User] Open the picker → `GitHub PR · PR changes…` → enter the PR URL.
 
@@ -531,12 +531,12 @@ git commit -m "detached commit"
 DETACHED_SHA=$(git rev-parse HEAD)
 echo "Detached commit SHA: $DETACHED_SHA"
 ```
-Note the printed SHA — it is needed in the Check step below.
+Note the printed SHA — it is needed in the check below.
 
 [User] Open the picker → `← Exit GitHub PR Review`.
 
 Expected: A warning reads: `You have 1 unpublished commit in detached HEAD that will become unreachable after exit. Create a branch to keep them.`
-Expected: Two buttons: `Exit Anyway` and `Cancel`.
+Expected: Three buttons: `Create Branch…`, `Exit Anyway`, and `Cancel`.
 
 **Test Cancel (FS-09 S06):**
 
@@ -554,10 +554,54 @@ Expected: Exits cleanly to `feature/alpha`.
 ```bash
 git branch --contains $DETACHED_SHA 2>/dev/null || echo "not reachable"
 ```
-Expected: Output is `not reachable` — the commit is not on any branch (it is in the reflog but will be pruned by GC).
+Expected: Output is `not reachable` — the commit is in the reflog but not on any branch.
 
 [Claude] Clean up any stash created during this section:
 ```
+git stash drop 2>/dev/null || true
+```
+
+### B.9a — Detached commits: Create Branch saves work and exits (`FS-09 S05a`)
+
+[User] Open the picker → `GitHub PR · PR changes…` → enter the PR URL.
+
+[Claude] Make a commit in detached HEAD:
+```bash
+echo "branch-save content" > test-branch-save.txt
+git add test-branch-save.txt
+git commit -m "commit to save via branch"
+SAVE_SHA=$(git rev-parse HEAD)
+echo "Commit SHA: $SAVE_SHA"
+```
+
+[User] Open the picker → `← Exit GitHub PR Review`.
+
+Expected: Three-button warning as above.
+
+[User] Click `Create Branch…`.
+
+Expected: An input box appears with pre-filled value `review/pr-<N>` where `<N>` is the PR number extracted from the current base label, or `review/pr-changes` if no number is found.
+
+[User] Accept the default or enter a custom name, then confirm.
+
+Expected: The extension creates the branch at the current detached HEAD, exits cleanly to `feature/alpha`, and `← Exit GitHub PR Review` disappears.
+
+[Check] Verify the branch was created containing the saved commit:
+```bash
+BRANCH_NAME="review/pr-changes"   # substitute actual name if different
+git log "$BRANCH_NAME" --oneline -1
+```
+Expected: Shows the `commit to save via branch` subject.
+
+[Check] Verify HEAD is back on `feature/alpha`:
+```bash
+git rev-parse --abbrev-ref HEAD
+```
+
+[Claude] Clean up:
+```bash
+BRANCH_NAME="review/pr-changes"
+git branch -D "$BRANCH_NAME"
 git stash drop 2>/dev/null || true
 ```
 

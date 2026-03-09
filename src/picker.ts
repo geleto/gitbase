@@ -53,9 +53,27 @@ export async function pickBase(root: string, prReviewState?: PrReviewState): Pro
     if (detached > 0) {
       const action = await vscode.window.showWarningMessage(
         `You have ${detached} unpublished commit${detached === 1 ? '' : 's'} in detached HEAD that will become unreachable after exit. Create a branch to keep them.`,
-        'Exit Anyway', 'Cancel'
+        'Create Branch…', 'Exit Anyway', 'Cancel'
       )
-      if (action !== 'Exit Anyway') return undefined
+      if (!action || action === 'Cancel') return undefined
+      if (action === 'Create Branch…') {
+        const prNum = prReviewState.prevBaseLabel.match(/#(\d+)/)?.[1]
+        const name = await vscode.window.showInputBox({
+          prompt: 'Branch name for your detached commits',
+          value: `review/pr-${prNum ?? 'changes'}`,
+          validateInput: v => v.trim().length > 0 ? null : 'Branch name cannot be empty',
+        })
+        if (!name) return undefined
+        if (await gitOrNull(root, 'checkout', '-b', name.trim()) === null) {
+          void vscode.window.showErrorMessage(
+            `Failed to create branch "${name.trim()}". A branch with that name may already exist.`
+          )
+          return undefined
+        }
+        // Branch created at current HEAD — fall through to exitPr to restore
+        // the previous branch and pop any stash from entry.
+      }
+      // 'Exit Anyway' or post-branch-creation: proceed with the normal exit.
     }
 
     const exitResult = await vscode.window.withProgress(

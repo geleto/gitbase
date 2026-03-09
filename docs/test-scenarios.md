@@ -893,16 +893,27 @@ The `labels.ts` module registers a `ResourceLabelFormatter` for the `basegit:` U
 - [Claude] make a commit in detached HEAD: `echo test > test-detached.txt && git add test-detached.txt && git commit -m "detached commit"`
 - [User] open picker → `← Exit GitHub PR Review`
 - Expected: warning `You have 1 unpublished commit in detached HEAD that will become unreachable after exit. Create a branch to keep them.`
-- Expected: two buttons: `Exit Anyway` and `Cancel`
+- Expected: three buttons: `Create Branch…`, `Exit Anyway`, and `Cancel`
+
+**S05a · Create Branch from detached commits**
+- Precondition: S05 state (detached commits warning is visible)
+- [User] click `Create Branch…`
+- Expected: an input box appears with pre-filled name `review/pr-<N>` (where N is the PR number from the current base label, or `review/pr-changes` if no number is found)
+- [User] accept the default or type a custom branch name, then confirm
+- Expected: the extension creates the branch at the current HEAD, then exits to the previous branch; `← Exit GitHub PR Review` disappears from the picker
+- [Claude] verify the new branch exists and contains the detached commit: `git log <branch-name> --oneline -1`
+- [Claude] verify HEAD is back on the previous branch: `git rev-parse --abbrev-ref HEAD`
+- [Claude] verify `git stash list` reflects the stash state (empty if the entry was clean; stash popped if an entry-stash was created in S02)
+- [Reset] delete the branch created in this scenario: `git branch -D review/pr-<N>`
 
 **S06 · Cancel detached-commits warning**
-- Precondition: S05 state
+- Precondition: S05 state (re-enter PR review and make another detached commit if S05a was run)
 - [User] click `Cancel`
 - Expected: still in PR review mode, no git changes
-- [Reset] state is preserved; the detached commit from S05 is still present — proceed directly to S07 without any cleanup
+- [Reset] state is preserved; the detached commit is still present — proceed directly to S07 without any cleanup
 
 **S07 · Confirm exit despite detached commits**
-- Precondition: S05 state (detached commit present)
+- Precondition: S05/S06 state (detached commit present)
 - [User] click `Exit Anyway`
 - Expected: exits cleanly to previous branch
 - [Claude] verify the detached commit is no longer reachable from any branch (it is in reflog but not a branch head)
