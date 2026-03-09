@@ -120,6 +120,13 @@ git checkout feature/alpha
 [User] Open the picker → Tag… → select `v1.0`.
 Expected label: `Tag · v1.0`
 
+[Claude] Capture the SHA before deletion — it cannot be recovered from the log once the local ref is gone:
+```bash
+V1_0_SHA=$(git rev-parse v1.0)
+echo "v1.0 → $V1_0_SHA"
+```
+Note the printed SHA.
+
 [Claude] Delete tag `v1.0` locally and from origin:
 ```
 git tag -d v1.0
@@ -137,12 +144,11 @@ Expected: Despite the warning wording, the extension also auto-recovers to `orig
 
 Note: `provider.ts:106` runs `git rev-parse --verify <ref>` regardless of ref type. A deleted tag is caught by the same validation path as a deleted branch. Per source scenario FS-06 S05b, a deleted tag shows a warning notification even when auto-recovery succeeds — this differs from deleted branches (C.1) which show an info notification on successful recovery.
 
-[Reset] Recreate `v1.0` pointing to its original commit:
-```
-git tag v1.0 <original-v1.0-commit-sha>
+[Reset] Recreate `v1.0` pointing to its original commit using the SHA captured above:
+```bash
+git tag v1.0 $V1_0_SHA
 git push origin refs/tags/v1.0
 ```
-(Get the original SHA from the reflog: `git reflog | grep v1.0` or use `git log --oneline --decorate`.)
 
 ### C.3 — Orphaned commit SHA triggers recovery (`FS-06 S05c`)
 
@@ -278,7 +284,7 @@ git remote set-head origin --delete
 git fetch origin
 ```
 
-[Claude] Clear the workspaceState base key. Reload will trigger auto-detect.
+[User] Clear the workspaceState base key for this repo via VS Code developer tools (same method as B.1): `Help → Toggle Developer Tools → Application tab → Storage → IndexedDB` → find the workspaceStorage entry → delete the key `taskChanges.base.<repo-root-path>`. Reload will trigger auto-detect.
 
 [User] Reload the VS Code window.
 
@@ -316,7 +322,7 @@ git push origin --delete main 2>/dev/null || true
 git fetch origin
 ```
 
-[Claude] Clear the workspaceState base key.
+[User] Clear the workspaceState base key via developer tools (same method as B.1).
 
 [User] Reload the VS Code window.
 
@@ -369,7 +375,7 @@ git symbolic-ref --short refs/remotes/upstream/HEAD
 ```
 Expected output: `upstream/main`
 
-[Claude] Clear the workspaceState base key.
+[User] Clear the workspaceState base key via developer tools (same method as B.1).
 
 [User] Reload the VS Code window.
 
@@ -430,14 +436,16 @@ git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null
 
 Expected: Working tree clean, on `feature/alpha`, `origin/HEAD` → `origin/main`, upstream is `origin/main`.
 
-If `feature/beta` was deleted and not restored during this plan, recreate it at its canonical commit:
-```
-git checkout -b feature/beta v1.1 2>/dev/null || git checkout feature/beta
+If `feature/beta` was deleted and not restored during this plan, recreate it at its canonical commit (force-delete first to ensure a clean start):
+```bash
+git branch -D feature/beta 2>/dev/null || true
+git checkout -b feature/beta v1.1
+git show v1.1:file-c.txt > file-c.txt
 echo "beta change" >> file-c.txt
 git add file-c.txt
-git commit -m "Beta: update file-c" 2>/dev/null || true
-git push origin feature/beta --force 2>/dev/null || true
-git branch -u origin/feature/beta feature/beta 2>/dev/null || true
+git commit -m "Beta: update file-c"
+git push origin feature/beta --force
+git branch -u origin/feature/beta feature/beta
 git checkout feature/alpha
 ```
 

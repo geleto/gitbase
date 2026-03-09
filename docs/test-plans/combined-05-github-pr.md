@@ -523,12 +523,15 @@ git checkout -- README.md
 
 [User] Open the picker → `GitHub PR · PR changes…` → enter the PR URL.
 
-[Claude] Make a commit in detached HEAD:
-```
+[Claude] Make a commit in detached HEAD and capture its SHA:
+```bash
 echo "detached content" > test-detached.txt
 git add test-detached.txt
 git commit -m "detached commit"
+DETACHED_SHA=$(git rev-parse HEAD)
+echo "Detached commit SHA: $DETACHED_SHA"
 ```
+Note the printed SHA — it is needed in the Check step below.
 
 [User] Open the picker → `← Exit GitHub PR Review`.
 
@@ -547,11 +550,11 @@ Expected: Still in PR review mode; no git changes; the detached commit is still 
 
 Expected: Exits cleanly to `feature/alpha`.
 
-[Check] Verify the detached commit is no longer reachable from any branch:
+[Claude] Verify the detached commit is no longer reachable from any branch (use the SHA noted above):
+```bash
+git branch --contains $DETACHED_SHA 2>/dev/null || echo "not reachable"
 ```
-git branch --contains <detached-commit-sha> 2>/dev/null || echo "not reachable"
-```
-Expected: The commit is not on any branch (it is in the reflog but will be pruned by GC).
+Expected: Output is `not reachable` — the commit is not on any branch (it is in the reflog but will be pruned by GC).
 
 [Claude] Clean up any stash created during this section:
 ```
@@ -823,40 +826,50 @@ git checkout -- README.md
 
 ### B.20 — Exit with stash pop conflict (`FS-09 S18`)
 
-**Precondition:** In PR review mode with a stash (enter review from a dirty state).
+**Precondition:** Clean working tree on `feature/alpha`.
 
-[Claude] Modify README.md and enter review:
-```
+[Claude] Dirty README.md and enter PR review:
+```bash
 echo "stash conflict content" >> README.md
 ```
 
 [User] Open the picker → `GitHub PR · PR changes… (will stash)` → enter the PR URL.
 
-[Claude] While in detached HEAD, edit the same file that was stashed and commit it:
-```
-echo "conflict-content" > README.md
-git add README.md
-git commit -m "conflict setup"
+Now in detached HEAD. The stash records: parent = feature/alpha's current README.md; delta = append `stash conflict content`.
+
+[Claude] While in detached HEAD, advance feature/alpha to a commit where README.md has been completely replaced (so the stash delta no longer applies cleanly). Use a linked worktree to commit onto feature/alpha without leaving detached HEAD:
+```bash
+CONFLICT_WT=$(mktemp -d)
+git worktree add "$CONFLICT_WT" feature/alpha
+echo "overwritten-for-conflict" > "$CONFLICT_WT/README.md"
+git -C "$CONFLICT_WT" add README.md
+git -C "$CONFLICT_WT" commit -m "advance feature/alpha for conflict test"
+git worktree remove "$CONFLICT_WT"
 ```
 
 [User] Open the picker → `← Exit GitHub PR Review`.
 
-Expected: Exits back to `feature/alpha` (branch is restored successfully).
+The exit sequence: `git checkout feature/alpha` → README.md = `overwritten-for-conflict\n`. Then `git stash pop --index` tries to apply the stash's delta (which expects the original README.md as its base) — the base mismatch causes a merge conflict, so the pop fails.
+
+Expected: Exits back to `feature/alpha` (branch checkout succeeds).
 Expected: Warning: `Your stashed changes could not be restored automatically — they are still safe in the stash. Run "git stash pop" to apply them; if there are conflicts, resolve them then run "git stash drop".` with `Copy command` button.
 Expected: Clicking `Copy command` copies `git stash pop` to clipboard.
 
-[Check] Verify the stash is still present (pop failed due to conflict):
+[Check] Verify the stash is still present (pop failed):
 ```
 git stash list
 ```
 Expected: One entry.
 
-[Check] Verify HEAD is on `feature/alpha`.
-
-[Reset] Discard the conflicted stash:
+[Check] Verify HEAD is on `feature/alpha`:
 ```
+git rev-parse --abbrev-ref HEAD
+```
+
+[Reset] Undo the advance commit and drop the stash:
+```bash
+git reset --hard HEAD~1
 git stash drop stash@{0}
-git checkout -- README.md
 ```
 
 ---
