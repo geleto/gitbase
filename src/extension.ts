@@ -99,12 +99,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       // VS Code serialises the resource state before invoking the command from the inline menu.
       // Strip the #gitbase fragment (WORKAROUND_URI_FRAGMENT) before opening.
       const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
-      // A/U files live in the git panel too — use openWithoutAutoReveal so it does not expand.
-      if (resource.contextValue === 'A' || resource.contextValue === 'U') {
-        void openWithoutAutoReveal(uri)
-      } else {
-        void vscode.commands.executeCommand('vscode.open', uri)
-      }
+      // All files may appear in the native git panel (e.g. M files appear in Staged Changes
+      // when partially staged) — always suppress scm.autoReveal so it does not expand.
+      void openWithoutAutoReveal(uri)
     }),
     vscode.commands.registerCommand('taskChanges.openUntracked', (uri: vscode.Uri) => {
       void openWithoutAutoReveal(vscode.Uri.from(uri))

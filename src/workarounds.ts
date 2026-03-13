@@ -85,9 +85,9 @@ export function assertScmContext(): void {
  * This is not a VS Code bug — it is the intended behaviour of `scm.autoReveal`:
  * whenever the active editor changes VS Code searches all SCM providers for the
  * newly active file and reveals it in the first provider that contains it.
- * Untracked ('U') and added ('A') files live in the native git panel's
- * "Untracked Changes" / "Changes" group, so opening them expands that panel
- * and moves focus away from GitBase.
+ * Files of any status can appear in the native git panel — e.g. modified ('M')
+ * files with staged changes appear in "Staged Changes" — so opening them can
+ * expand that section and move focus away from GitBase.
  *
  * Fix: briefly set `scm.autoReveal` to `false` while opening the file, then
  * restore the previous value in a `finally` block.  The setting is only
