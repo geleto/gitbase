@@ -80,33 +80,19 @@ export function assertScmContext(): void {
 }
 
 /**
- * WORKAROUND D: scm.autoReveal expanding the git panel on file open.
+ * WORKAROUND D: scm.autoReveal / git panel expansion on file open.
  *
- * This is not a VS Code bug — it is the intended behaviour of `scm.autoReveal`:
- * whenever the active editor changes VS Code searches all SCM providers for the
- * newly active file and reveals it in the first provider that contains it.
- * Files of any status can appear in the native git panel — e.g. modified ('M')
- * files with staged changes appear in "Staged Changes" — so opening them can
- * expand that section and move focus away from GitBase.
+ * When a file is opened from our panel, VS Code's `scm.autoReveal` and the
+ * git extension's own `onDidChangeActiveTextEditor` handler both look for the
+ * newly active file in every SCM provider and expand/select it there.  Because
+ * the git provider registers first, files that also appear in "Staged Changes"
+ * would cause that group to expand and steal focus from GitBase.
  *
- * Fix: briefly set `scm.autoReveal` to `false` while opening the file, then
- * restore the previous value in a `finally` block.  The setting is only
- * written if it was already `true`, so a user who has disabled autoReveal is
- * not affected.  `focusActiveEditorGroup` cannot be used instead because it
- * itself triggers `onDidChangeActiveTextEditor` and re-fires autoReveal.
+ * Fix: call `workbench.view.scm` before opening the document.  This asserts
+ * our provider as the focused SCM so that both reveal mechanisms target our
+ * panel (where the file is already visible) instead of git's Staged Changes.
  */
 export async function openWithoutAutoReveal(uri: vscode.Uri): Promise<void> {
-  const scmConfig  = vscode.workspace.getConfiguration('scm')
-  // Use inspect() to get only the explicitly-set global value (undefined if defaulted).
-  const prev = scmConfig.inspect<boolean>('autoReveal')?.globalValue
-  // Only write if the effective value is not already false (i.e. don't suppress if user
-  // explicitly disabled auto-reveal — writing false when false is a no-op anyway).
-  const effective = scmConfig.get<boolean>('autoReveal')
-  if (effective !== false) await scmConfig.update('autoReveal', false, vscode.ConfigurationTarget.Global)
-  try {
-    await vscode.window.showTextDocument(uri)
-  } finally {
-    // Restore to the previously-explicit value (undefined removes the setting from settings.json).
-    if (effective !== false) await scmConfig.update('autoReveal', prev, vscode.ConfigurationTarget.Global)
-  }
+  await vscode.commands.executeCommand('workbench.view.scm')
+  await vscode.window.showTextDocument(uri)
 }
