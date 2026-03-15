@@ -124,7 +124,7 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test:unit": "mocha --ui tdd --timeout 10000 'out/tests/unit/**/*.test.js'"
+    "test:unit": "mocha --require out/tests/unit/setup.js --ui tdd --timeout 10000 'out/tests/unit/**/*.test.js'"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
