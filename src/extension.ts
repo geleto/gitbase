@@ -7,6 +7,7 @@ import { openWithoutAutoReveal } from './workarounds'
 import { registerLabelFormatter } from './labels'
 import { TaskChangesProvider } from './provider'
 import { GitBaseBlameController } from './blame'
+import { TaskChangesTimelineProvider } from './timelineProvider'
 
 // ── Activation ────────────────────────────────────────────────────────────────
 
@@ -25,14 +26,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   setGitPath(api.git.path)
   registerLabelFormatter(ctx)
 
-  const content      = new BaseGitContentProvider()
-  const decoProvider = new TaskChangesDecorationProvider()
+  const content          = new BaseGitContentProvider()
+  const decoProvider     = new TaskChangesDecorationProvider()
+  const timelineProvider = new TaskChangesTimelineProvider(() => providers.values())
   ctx.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider('basegit', content),
     vscode.workspace.registerTextDocumentContentProvider('empty',   new EmptyContentProvider()),
     vscode.window.registerFileDecorationProvider(decoProvider),
     decoProvider,
     new GitBaseBlameController(),
+    timelineProvider,
   )
 
   function addRepo(repo: GitRepository): void {
@@ -45,6 +48,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     ctx.subscriptions.push(p.onDidChangeResourceStates(() =>
       updateActiveEditorContext(vscode.window.activeTextEditor)
     ))
+    // Refresh the Timeline panel when this repo's base changes
+    ctx.subscriptions.push(p.onDidChangeBase(() => timelineProvider.fireChanged()))
   }
 
   // onDidOpenRepository handles repos opened after initialization (e.g. multi-root).

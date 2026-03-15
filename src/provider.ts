@@ -18,6 +18,8 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
   private readonly statusBarItem: vscode.StatusBarItem
   private readonly _onDidChangeResourceStates = new vscode.EventEmitter<void>()
   readonly onDidChangeResourceStates: vscode.Event<void> = this._onDidChangeResourceStates.event
+  private readonly _onDidChangeBase = new vscode.EventEmitter<void>()
+  readonly onDidChangeBase: vscode.Event<void> = this._onDidChangeBase.event
   private readonly subs: vscode.Disposable[] = []
 
   private baseRef         = 'HEAD'
@@ -69,6 +71,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
         : `${this.baseType} · ${this.baseLabel}`
     this.statusBarItem.text    = this.statusBarText()
     this.statusBarItem.tooltip = new vscode.MarkdownString('**GitBase** — click to select base')
+    this._onDidChangeBase.fire()
   }
 
   private statusBarText(): string {
@@ -331,6 +334,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
     this.subs.forEach(d => d.dispose())
     if (this.timer) clearTimeout(this.timer)
     this._onDidChangeResourceStates.dispose()
+    this._onDidChangeBase.dispose()
     this.statusBarItem.dispose()
     this.scm.dispose()
     this.decoProvider.clear(this.repo.rootUri.fsPath)
