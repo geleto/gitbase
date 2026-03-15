@@ -221,6 +221,16 @@ Expected: The status bar switches to show repo B's base. Repo A's status bar ite
 
 Expected: Both status bar items become visible (no active editor → no owner → show all).
 
+### D.3b — Status bar click opens base picker for the correct repo
+
+**Precondition:** A file from repo A is the active editor; repo A's status bar item is visible.
+
+[User] Click the status bar item showing repo A's base.
+
+Expected: The base picker opens listing refs for **repo A** (e.g. `origin/main`, `feature/alpha` appear under Branch…). Repo B's refs do NOT appear — the status bar item's command argument is `this.scm` (repo A's `SourceControl` instance), so `resolveProvider(sc)` bypasses the repo quick pick and targets repo A directly.
+
+[User] Press Escape to close the picker without selecting.
+
 ---
 
 ## Section E: Closing a Repo (`FS-07 S05`)

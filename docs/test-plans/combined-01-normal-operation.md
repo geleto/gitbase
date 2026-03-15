@@ -294,23 +294,12 @@ Note: M files use `vscode.open` directly; `scm.autoReveal` behaviour applies but
 
 ### C.3 — Click U file: working file opens without git panel expansion (`FS-04 S03`)
 
-[Claude] Locate and read the VS Code global user settings file to record the current value of `scm.autoReveal`:
-```
-code --locate-user-data-dir
-```
-Then read `<data-dir>/User/settings.json`. Note whether `scm.autoReveal` is absent, `true`, or `false`.
-
 [User] Click `untracked-test.txt` in the GitBase Changes panel.
 
 Expected: The file `untracked-test.txt` opens directly (no diff).
 Expected: The git SCM panel does NOT expand to reveal the file and does NOT steal focus from the GitBase panel.
 
-[Check] Re-read `<data-dir>/User/settings.json`.
-
-- **If `scm.autoReveal` was absent before the test:** Expected: the key is still absent. `openWithoutAutoReveal` uses `inspect()` to detect no explicit value and removes the key rather than writing `true`, so no spurious entry appears.
-- **If `scm.autoReveal` was explicitly `true` before the test:** Expected: `"scm.autoReveal": true` is still present. The `finally` block restores it by calling `update(true)`, not by deleting the key.
-
-Note: `openWithoutAutoReveal` in `workarounds.ts` temporarily sets `scm.autoReveal = false` globally, then restores the original value in a `finally` block using `inspect()` to distinguish "absent" from "explicitly true".
+Note: `openWithoutAutoReveal` in `workarounds.ts` (WORKAROUND D) calls `workbench.view.scm` before opening the document. This pre-asserts GitBase as the focused SCM provider so that, when VS Code fires `onDidChangeActiveTextEditor` after `showTextDocument`, the git extension's auto-reveal logic targets GitBase's panel (where the file is already listed) rather than git's own "Changes" group. The `scm.autoReveal` setting in `settings.json` is **not read or modified** by this workaround.
 
 ### C.4 — Inline icon on U/A file: fragment-stripping path (`FS-04 S03b`)
 
@@ -321,23 +310,16 @@ Expected: The git SCM panel does NOT expand.
 
 Note: The inline/context menu path invokes `taskChanges.openFile(resource)` where `resource.resourceUri` carries a `#gitbase` fragment. `extension.ts:98` strips the fragment with `.with({ fragment: '' })` before opening. The row-click path (`taskChanges.openUntracked`) receives a plain `workUri` with no fragment. Both paths call `openWithoutAutoReveal` for A/U files, but only the inline path exercises the fragment-stripping code.
 
-### C.5 — A/U file open when `scm.autoReveal` is already `false` (`FS-04 S03c`)
+### C.5 — Staged file doesn't expand git's "Staged Changes" group (`FS-04 S03c`)
 
-[Claude] Set `scm.autoReveal` to `false` in the VS Code global user settings file:
-Read `<data-dir>/User/settings.json`, add `"scm.autoReveal": false`, write back.
+**Precondition:** `staged-test.txt` is visible in both the GitBase Changes panel (as `A`) and in the native git SCM panel under "Staged Changes" with an Unstage button.
 
-[Check] Confirm the setting is present:
-Read `<data-dir>/User/settings.json`.
-Expected: `"scm.autoReveal": false` is present.
+[User] Click `staged-test.txt` in the **GitBase Changes** panel.
 
-[User] Click `staged-test.txt` (an A file) in the GitBase Changes panel.
+Expected: `staged-test.txt` opens directly in the editor (no diff).
+Expected: The git SCM panel's "Staged Changes" group does **not** expand or scroll to the file, and does **not** steal focus from the GitBase panel.
 
-Expected: The file opens directly (no diff). Git SCM panel does not expand.
-
-[Check] Re-read `<data-dir>/User/settings.json`.
-Expected: `scm.autoReveal` is still `false` and the file was NOT rewritten — the `if (prev !== false)` guard in `openWithoutAutoReveal` skips both the write and the restore when the original value is already `false`.
-
-[Reset] Remove the explicit `scm.autoReveal` setting: edit `<data-dir>/User/settings.json` and remove the `scm.autoReveal` key.
+Note: `staged-test.txt` also appears in the native git SCM panel under "Staged Changes". Without WORKAROUND D, opening the document would cause the git extension's `onDidChangeActiveTextEditor` handler to expand that group and scroll to the file. `openWithoutAutoReveal` prevents this by calling `workbench.view.scm` first — asserting GitBase as the focused SCM provider so that the git extension's reveal logic targets GitBase's panel (where the file is already visible at the top) instead of git's "Staged Changes" group.
 
 ### C.6 — Click binary A file: binary notice (`FS-03 S06`)
 
@@ -345,7 +327,7 @@ Expected: `scm.autoReveal` is still `false` and the file was NOT rewritten — t
 
 Expected: An info notification reads `Binary file: test-binary.png — diff not available`.
 
-Note: Binary detection (`parseBinarySet` in `git.ts`) flags the file; `makeState` assigns contextValue `B` (binary), which routes the row-click to `taskChanges.binaryNotice` rather than opening a diff.
+Note: Binary detection (`parseBinarySet` in `git.ts`) flags the file. `makeState` overrides the resource state's `command` to `taskChanges.binaryNotice` — but keeps the `contextValue` as the normal git status letter (e.g. `A` for a staged file). The binary notice fires from the row-click command, not from a special `B` contextValue.
 
 ### C.7 — Inline icon on binary file: opens normally (`FS-04 S15`)
 
@@ -353,7 +335,7 @@ Note: Binary detection (`parseBinarySet` in `git.ts`) flags the file; `makeState
 
 Expected: The file opens in VS Code's binary viewer (or hex editor). The binary notice is NOT shown.
 
-Note: The inline icon uses `taskChanges.openFile`, which has no binary awareness — it opens the file based on contextValue `A` (since `test-binary.png` is staged), not `B`. The binary notice only affects the row-click path.
+Note: The inline `$(go-to-file)` icon is registered in `package.json` with a `when` clause independent of binary detection. When clicked, it invokes `taskChanges.openFile`, which opens the file directly without any binary awareness. The binary notice only fires on the row-click path via the overridden `command` on the resource state.
 
 ### C.8 — Click D file: base-version opens (`FS-04 S04`)
 
@@ -859,6 +841,16 @@ Note: If the file has no staged changes, the GitBase gutter bars and the git ext
 [User] Open `untracked-test.txt` in the editor.
 
 Expected: No GitBase gutter markers appear — untracked files have no base-ref version.
+
+### G.2b — Deleted file shows no gutter markers
+
+[User] The working tree no longer contains FILE_D. Open the file in VS Code by typing its path in the Explorer search bar or via `Go to File…`.
+
+If FILE_D cannot be opened (it is deleted from disk), skip this step and treat it as implicitly verified: `provideOriginalResource` returns `undefined` for D-status files, so even if the file could be opened, no gutter markers would appear.
+
+Expected (if file opens): No GitBase gutter markers.
+
+Note: `provideOriginalResource` in `provider.ts` explicitly returns `undefined` for `contextValue === 'D'` — the file exists at the base ref but not in the working tree, so a gutter diff makes no sense.
 
 ### G.3 — Gutter reflects base, not git index (merge-base distinction)
 
