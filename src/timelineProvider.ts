@@ -51,7 +51,10 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
   /** True when registerTimelineProvider succeeded and the Timeline panel is active. */
   readonly isRegistered: boolean
 
-  constructor(private readonly getProviders: () => IterableIterator<TaskChangesProvider>) {
+  constructor(
+    private readonly getProviders: () => IterableIterator<TaskChangesProvider>,
+    out: vscode.OutputChannel,
+  ) {
     // registerTimelineProvider is a proposed API in some VS Code builds.
     // Check for existence first, then catch any runtime refusal (e.g. proposal not declared).
     // If unavailable, the extension still activates — the Timeline panel just won't appear.
@@ -61,6 +64,9 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
     if (typeof register !== 'function') {
       this.reg = { dispose() {} }
       this.isRegistered = false
+      out.appendLine('GitBase: Timeline history panel is not available in this version of VS Code.')
+      out.appendLine('Note: the Timeline API is experimental and may change or be removed in future VS Code releases.')
+      out.appendLine('To enable it, launch VS Code with: --enable-proposed-api gitbase.gitbase')
       return
     }
     try {
@@ -69,6 +75,10 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
     } catch {
       this.reg = { dispose() {} }
       this.isRegistered = false
+      out.appendLine('GitBase: Timeline history panel is disabled.')
+      out.appendLine('To enable it, add the following to your VS Code launch arguments:')
+      out.appendLine('  --enable-proposed-api gitbase.gitbase')
+      out.appendLine('Or, if running from source, add "timeline" to enabledApiProposals in package.json.')
     }
   }
 

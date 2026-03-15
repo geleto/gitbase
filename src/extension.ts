@@ -29,9 +29,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   setGitPath(api.git.path)
   registerLabelFormatter(ctx)
 
+  const out              = vscode.window.createOutputChannel('GitBase')
   const content          = new BaseGitContentProvider()
   const decoProvider     = new TaskChangesDecorationProvider()
-  timelineProvider       = new TaskChangesTimelineProvider(() => providers.values())
+  timelineProvider       = new TaskChangesTimelineProvider(() => providers.values(), out)
   blameController        = new GitBaseBlameController()
   ctx.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider('basegit', content),
