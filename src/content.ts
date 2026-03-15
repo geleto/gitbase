@@ -14,7 +14,7 @@ export function makeBaseUri(root: string, ref: string, fp: string, suffix = ''):
   })
 }
 
-function parseBaseUri(uri: vscode.Uri): { root: string; ref: string; fp: string } {
+export function parseBaseUri(uri: vscode.Uri): { root: string; ref: string; fp: string } {
   const [root = '', ref = '', fp = ''] = uri.query.split('&').map(decodeURIComponent)
   return { root, ref, fp }
 }

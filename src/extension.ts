@@ -6,6 +6,7 @@ import { TaskChangesDecorationProvider } from './decorations'
 import { openWithoutAutoReveal } from './workarounds'
 import { registerLabelFormatter } from './labels'
 import { TaskChangesProvider } from './provider'
+import { GitBaseBlameController } from './blame'
 
 // ── Activation ────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     vscode.workspace.registerTextDocumentContentProvider('empty',   new EmptyContentProvider()),
     vscode.window.registerFileDecorationProvider(decoProvider),
     decoProvider,
+    new GitBaseBlameController(),
   )
 
   function addRepo(repo: GitRepository): void {
