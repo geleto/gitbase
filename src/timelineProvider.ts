@@ -79,12 +79,13 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
     if (token.isCancellationRequested) return { items: [] }
 
     const hasMore = entries.length >= limit
+    const extraHash = hasMore ? entries[entries.length - 1]?.hash : undefined
     if (hasMore) entries.splice(entries.length - 1, 1)
 
     const paging = hasMore ? { cursor: entries[entries.length - 1]?.hash } : undefined
 
     const items: vscode.TimelineItem[] = entries.map((c, i) => {
-      const prevHash = entries[i + 1]?.hash
+      const prevHash = i < entries.length - 1 ? entries[i + 1]?.hash : extraHash
       const item     = new vscode.TimelineItem(c.subject || c.hash.slice(0, 7), c.authorDate * 1000)
 
       item.id          = c.hash
