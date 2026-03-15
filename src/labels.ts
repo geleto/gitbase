@@ -16,6 +16,32 @@ import * as vscode from 'vscode'
  */
 const LABEL_FORMATTER_ENABLED = false
 
+/**
+ * Returns the title to pass to `vscode.diff`.
+ * When the formatter is enabled VS Code derives the tab label from the basegit: URI fragment,
+ * so an explicit title must not be provided (passing undefined lets the formatter take over).
+ */
+export function diffTitle(filename: string, shortSuffix: string): string | undefined {
+  return LABEL_FORMATTER_ENABLED ? undefined : `${filename} (${shortSuffix})`
+}
+
+/**
+ * Returns the fragment to embed in a basegit: URI.
+ * When the formatter is enabled this becomes the parenthetical context shown in the tab label/tooltip.
+ * When disabled the fragment is invisible; a minimal string is returned for URI distinctness only.
+ */
+export function baseFragment(
+  type: 'Branch' | 'Tag' | 'Commit' | 'PR' | undefined,
+  ref: string,
+  label: string,
+  comparison: string,
+): string {
+  if (!LABEL_FORMATTER_ENABLED) return comparison
+  if (type === 'Commit') return `Commit · ${ref} · ${comparison}`
+  if (type === 'PR')     return comparison === 'Deleted' ? `${label} · Deleted` : label
+  return `${type ?? 'Ref'} · ${label} · ${comparison}`
+}
+
 export function registerLabelFormatter(ctx: vscode.ExtensionContext): void {
   if (!LABEL_FORMATTER_ENABLED) return
 

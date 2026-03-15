@@ -6,6 +6,7 @@ import { PrReviewState } from './pr'
 import { EMPTY_URI, makeBaseUri, BaseGitContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext } from './workarounds'
+import { diffTitle, baseFragment } from './labels'
 
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
@@ -204,12 +205,12 @@ export class TaskChangesProvider implements vscode.Disposable {
       baseUri  = EMPTY_URI
       rightUri = workUri
     } else if (status === 'D') {
-      baseUri  = makeBaseUri(root, ref, c.path.replace(/\\/g, '/'), 'Deleted')
+      baseUri  = makeBaseUri(root, ref, c.path.replace(/\\/g, '/'), baseFragment(this.baseType, this.baseRef, this.baseLabel, 'Deleted'))
       rightUri = EMPTY_URI
     } else {
       // M or R — for renames the base side uses the old path
       const baseFp = (status === 'R' ? c.oldPath! : c.path).replace(/\\/g, '/')
-      baseUri  = makeBaseUri(root, ref, baseFp, `since ${this.baseLabel}`)
+      baseUri  = makeBaseUri(root, ref, baseFp, baseFragment(this.baseType, this.baseRef, this.baseLabel, 'Working Tree'))
       rightUri = workUri
     }
 
@@ -218,7 +219,9 @@ export class TaskChangesProvider implements vscode.Disposable {
     const diffSuffix = this.baseType === 'Commit' ? this.baseRef.slice(0, 7) + '…'
                      : this.baseType === 'PR'     ? truncate(this.baseLabel.match(/GitHub PR #\d+/)?.[0] ?? this.baseLabel)
                      :                              truncate(this.baseLabel)
-    const diffTitle = `${nodePath.basename(c.path)} (${diffSuffix})`
+    // diffTitle is the fallback used when LABEL_FORMATTER_ENABLED is false.
+    // When true, vscode.diff derives the tab label from the formatter via the basegit: URI fragment.
+    const title = diffTitle(nodePath.basename(c.path), diffSuffix)
 
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
@@ -226,7 +229,7 @@ export class TaskChangesProvider implements vscode.Disposable {
         ? { title: 'Open file', command: 'taskChanges.openUntracked',     arguments: [workUri] }
         : status === 'D'
           ? { title: 'Open file', command: 'vscode.open', arguments: [baseUri] }
-          : { title: 'Open diff', command: 'vscode.diff', arguments: [baseUri, rightUri, diffTitle] }
+          : { title: 'Open diff', command: 'vscode.diff', arguments: [baseUri, rightUri, title] }
 
     const decorations: vscode.SourceControlResourceDecorations = {
       strikeThrough: d.strikeThrough,
