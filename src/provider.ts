@@ -10,7 +10,7 @@ import { diffTitle, baseFragment } from './labels'
 
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
-export class TaskChangesProvider implements vscode.Disposable {
+export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffProvider {
   static readonly NO_BASE_LABEL = 'HEAD · Select a base to begin'
 
   readonly scm: vscode.SourceControl
@@ -45,6 +45,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100)
     this.statusBarItem.command = { command: 'taskChanges.selectBase', arguments: [this.scm], title: 'Select Base' }
     this.statusBarItem.show()
+    this.scm.quickDiffProvider = this
 
     const stored = ctx.workspaceState.get<string>(`taskChanges.base.${root}`)
     if (stored) {
@@ -81,6 +82,25 @@ export class TaskChangesProvider implements vscode.Disposable {
 
   showStatusBar(): void { this.statusBarItem.show() }
   hideStatusBar(): void { this.statusBarItem.hide() }
+
+  // ── QuickDiffProvider ──────────────────────────────────────────────────────
+  // Returns the base-ref version of a file so VS Code can render gutter diff
+  // markers (added/modified lines) relative to the selected GitBase base.
+  provideOriginalResource(uri: vscode.Uri): vscode.Uri | undefined {
+    if (uri.scheme !== 'file') return undefined
+    if (this.baseRef === 'HEAD') return undefined
+    const root = this.repo.rootUri.fsPath
+    if (!uri.fsPath.startsWith(root + nodePath.sep) && uri.fsPath !== root) return undefined
+    // Match against tracked resource states (strip the #gitbase fragment first)
+    const state = this.group.resourceStates.find(r =>
+      vscode.Uri.from(r.resourceUri).with({ fragment: '' }).fsPath === uri.fsPath
+    )
+    if (!state) return undefined
+    // Untracked (U) has no base; deleted (D) has no working-tree counterpart
+    if (state.contextValue === 'U' || state.contextValue === 'D') return undefined
+    const rel = nodePath.relative(root, uri.fsPath).replace(/\\/g, '/')
+    return makeBaseUri(root, this.lastDiffRef, rel)
+  }
 
   schedule(): void {
     if (this.disposed) return

@@ -9,6 +9,8 @@
 | FS-03 · Diff Display | S01, S02, S03, S04, S05, S06, S07, S08, S09, S10, S11, S13 |
 | FS-04 · File Actions | S01, S02, S03, S03b, S03c, S04, S05, S06, S07, S08, S09, S10, S11, S12, S13, S14, S15 |
 | FS-05 · SCM Label & Decorations | S01, S02, S03, S06, S07, S08, S08b, S10 |
+| Quick Diff Provider | Gutter markers for M/U/D files, base vs index distinction, base change update (Section G) |
+| Status Bar | Initial display and per-picker-selection updates (Section D.0, D.1, D.4) |
 
 ## Scenarios Excluded from This Plan
 
@@ -806,6 +808,60 @@ Expected: Git's inline Stage/Discard buttons remain stable — they do **not** d
 Expected: No permanent loss of git panel functionality.
 
 Note: `assertScmContext()` (Workaround C in `workarounds.ts`) was previously called on every periodic refresh, which caused the git panel's inline buttons to flicker on every hover. That call has been removed from the refresh hot path; `assertScmContext()` is now only called on the two edge-case paths where context genuinely needs to be re-established (deleted-ref recovery and the null-diff / unborn-repo path). The primary button-contamination fix remains Workaround A (the `#gitbase` URI fragment). Setting `WORKAROUND_STALE_SCM_CONTEXT = false` disables the secondary assertion entirely.
+
+---
+
+## Section G: Quick Diff Gutter
+
+**Purpose:** Verify that editor gutter markers (coloured bars) appear relative to the selected GitBase base, not the git index.
+
+**Precondition:** Base is `Branch · origin/main`. FILE_M is modified (M) from Section A. `untracked-test.txt` (U) and FILE_D (D) are also present.
+
+### G.1 — Modified file shows gutter markers
+
+[User] Open FILE_M in the editor (click the `$(go-to-file)` inline icon on its row in the GitBase panel, or open it from the Explorer).
+
+Expected: Changed lines show coloured gutter bars (typically a blue/green bar for modified lines) in the editor gutter — these mark the diff relative to the GitBase base (`origin/main` merge-base), not relative to the git index.
+
+Note: If the file has no staged changes, the GitBase gutter bars and the git extension's gutter bars may appear identical. The distinction can be verified in G.3.
+
+### G.2 — Untracked file shows no gutter markers
+
+[User] Open `untracked-test.txt` in the editor.
+
+Expected: No GitBase gutter markers appear — untracked files have no base-ref version.
+
+### G.3 — Gutter reflects base, not git index (merge-base distinction)
+
+**Precondition:** Base is `Branch · origin/main`. FILE_M has been modified on `feature/alpha` in prior commits (it diverges from `origin/main` at the merge-base).
+
+[Claude] Stage the current working-tree change to FILE_M without committing:
+```bash
+git add FILE_M
+```
+
+[User] Open FILE_M. Observe the gutter.
+
+Expected: The GitBase gutter bars still show lines changed relative to the merge-base (all of FILE_M's changes since the branch point). The git extension's gutter bars (if visible in the same gutter) show only the newly staged change — a smaller set.
+
+Note: This confirms GitBase's `quickDiffProvider` returns a `basegit:` URI pointing to `lastDiffRef` (the merge-base SHA), not the git index.
+
+[Claude] Unstage:
+```bash
+git restore --staged FILE_M
+```
+
+### G.4 — Gutter updates when base changes
+
+**Precondition:** FILE_M is open in the editor.
+
+[User] Open the picker → Enter ref… → paste `HEAD` → confirm.
+
+Expected: Gutter markers disappear from FILE_M — `HEAD` as base means no diff.
+
+[User] Open the picker → Default branch → confirm.
+
+Expected: Gutter markers reappear on FILE_M.
 
 ---
 
