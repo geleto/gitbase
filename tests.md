@@ -14,12 +14,13 @@ needed to run them.
    - [2.1 parseNameStatus](#21-parsenamestatusout-string-rawchange)
    - [2.2 parseBinarySet](#22-parsebinarysetout-string-setstring)
    - [2.3 isSha](#23-issharef-string-boolean)
+   - [2.3b detectRefType (branch/tag collision)](#23b-detectreftyperoot-ref--branchtag-collision)
    - [2.4 parseGitBlame](#24-parsegitblamedata-string-blameinformation)
    - [2.5 LRUCache](#25-lrucachek-v)
    - [2.6 makeBaseUri / parseBaseUri](#26-makebaseuri--parsebaseuri-round-trip)
-   - [2.7 TaskChangesDecorationProvider](#27-taskchangesdecorationprovider)
-   - [2.8 diffTitle / baseFragment](#28-difftitle--basefragment)
+   - [2.7 diffTitle / baseFragment](#27-difftitle--basefragment)
 3. [Integration Tests](#3-integration-tests)
+   - [3.0 TaskChangesDecorationProvider](#30-taskchangesdecorationprovider)
    - [3.1 Extension Activation & Provider Lifecycle](#31-extension-activation--provider-lifecycle)
    - [3.2 Resource State Accuracy](#32-resource-state-accuracy)
    - [3.3 File Action Commands](#33-file-action-commands)
@@ -68,7 +69,7 @@ src/
       parseGitBlame.test.ts
       lruCache.test.ts
       uriHelpers.test.ts
-      decorationProvider.test.ts
+      labels.test.ts
     integration/
       runTests.ts          ← @vscode/test-electron entry point
       activation.test.ts
@@ -79,10 +80,11 @@ src/
       statusBar.test.ts
       contextKey.test.ts
       multiRepo.test.ts
+      decorationProvider.test.ts  ← requires extension host (vscode.Uri, EventEmitter, FileDecoration)
       blame.test.ts
       timeline.test.ts
     helpers/
-      gitFixture.ts        ← creates temp repos for integration tests
+      gitFixture.ts        ← creates temp repos, waitForResourceStates, captureNotifications, spyCommand
 ```
 
 ### Exports required before tests can run
@@ -93,8 +95,41 @@ Some functions are currently unexported. They need `export` added:
 |--------|------|-----------|
 | `parseGitBlame` | `src/blame.ts` | Unit test 2.4 |
 | `LRUCache` | `src/blame.ts` | Unit test 2.5 |
-| `buildDecorations` | `src/blame.ts` | Unit test 2.4 (optional) |
-| `logFile` | `src/timelineProvider.ts` | Unit test (log parsing) |
+
+### Integration test helpers
+
+The integration suite depends on async, event-driven state changes that are error-prone without
+purpose-built helpers. Add these to `src/test/helpers/gitFixture.ts`:
+
+```ts
+// Wait until provider.group.resourceStates satisfies predicate, polling up to timeoutMs
+export async function waitForResourceStates(
+  provider: TaskChangesProvider,
+  predicate: (states: vscode.SourceControlResourceState[]) => boolean,
+  timeoutMs = 3000,
+): Promise<void>
+
+// Wait until the VS Code clipboard contains a string matching predicate
+export async function waitForClipboard(
+  predicate: (text: string) => boolean,
+  timeoutMs = 2000,
+): Promise<string>
+
+// Intercept vscode.window.showInformationMessage / showWarningMessage for the duration of fn()
+export async function captureNotifications(
+  fn: () => Promise<void>,
+): Promise<{ severity: 'info' | 'warning' | 'error'; message: string }[]>
+
+// Spy on a VS Code command: returns call args for each invocation during fn()
+export async function spyCommand(
+  commandId: string,
+  fn: () => Promise<void>,
+): Promise<unknown[][]>
+```
+
+These utilities avoid `setTimeout`-based sleeps and make individual tests deterministic.
+All integration tests that currently say "wait up to X ms" or "observe that…" must use
+`waitForResourceStates` or `captureNotifications` rather than relying on implicit timing.
 
 ---
 
@@ -167,6 +202,26 @@ binary files get `-\t-\t<path>` (or a three-token rename form when binary rename
 | 7 | Tag name `v1.0` | `false` |
 | 8 | Empty string | `false` |
 | 9 | All zeros `000...000` (40) | `true` — structurally valid |
+
+### 2.3b `detectRefType(root, ref)` — branch/tag collision
+
+**Location:** `src/git.ts` (requires export)
+
+`detectRefType` checks `refs/heads/<ref>`, `refs/tags/<ref>`, and `refs/remotes/<ref>` in order.
+When both `refs/heads/<ref>` and `refs/tags/<ref>` exist, it returns `{ type: 'Branch', shadowed: 'tag' }`
+to signal the ambiguity. These tests require a real git repo (use `gitFixture.makeRepo`).
+
+| # | Description | Setup | Expected |
+|---|-------------|-------|---------|
+| 1 | Local branch only | `refs/heads/main` exists | `{ type: 'Branch' }` |
+| 2 | Tag only | `refs/tags/v1.0` exists | `{ type: 'Tag' }` |
+| 3 | Remote branch only | `refs/remotes/origin/main` exists | `{ type: 'Branch' }` |
+| 4 | Branch + tag with same name | Both `refs/heads/v1.0` and `refs/tags/v1.0` | `{ type: 'Branch', shadowed: 'tag' }` |
+| 5 | Unrecognised ref (SHA) | A full 40-char SHA | `{ type: 'Commit' }` |
+| 6 | Nonexistent ref | `git rev-parse` fails | Returns `undefined` or throws |
+
+Note: this is a git-dependent test. Run in the integration harness rather than plain Node.
+Place in `src/test/integration/git.test.ts` despite the section appearing under §2.
 
 ### 2.4 `parseGitBlame(data: string): BlameInformation[]`
 
@@ -245,8 +300,10 @@ These two functions are inverses; the round-trip must be lossless for all inputs
 | 10 | URI path | `uri.path === '/' + fp` (used by VS Code for tab label) |
 | 11 | Windows-style root path (`C:\Users\...`) | Encoded in query and decoded correctly |
 | 12 | Unicode chars in root/fp | Preserved through percent-encoding |
+| 13 | `parseBaseUri` with malformed query (missing `=`) | Returns `undefined` or throws without crashing |
+| 14 | `parseBaseUri` with empty query string | Returns `undefined` or throws without crashing |
 
-### 2.8 `diffTitle` / `baseFragment`
+### 2.7 `diffTitle` / `baseFragment`
 
 **Location:** `src/labels.ts`
 
@@ -263,14 +320,22 @@ returns the `comparison` argument unchanged.
 
 ---
 
-### 2.7 `TaskChangesDecorationProvider`
+## 3. Integration Tests
 
-**Location:** `src/decorations.ts`
+Integration tests run inside a real VS Code extension host via `@vscode/test-electron`.
+Each test suite creates a temporary git repository in a `tmp` directory, registers it
+as a workspace folder, and waits for the extension to activate. The shared helper
+(`gitFixture.ts`) handles repo creation, commits, cleanup, and the async utilities
+described in §1 (`waitForResourceStates`, `captureNotifications`, `spyCommand`).
+Where needed, tests access the provider instance directly via the extension's exported
+`activate()` function, or through the `providers` map exposed for testing.
 
-This class uses `vscode.Uri.file()`, `vscode.EventEmitter`, and `vscode.FileDecoration`.
-These are available in a VS Code extension host test but not in plain Node. If a lightweight
-mock of `vscode` is available (e.g. `vscode-test-stub`), tests can run in plain Node;
-otherwise they belong in the integration suite.
+### 3.0 `TaskChangesDecorationProvider`
+
+**File:** `src/test/integration/decorationProvider.test.ts`
+
+This class uses `vscode.Uri.file()`, `vscode.EventEmitter`, and `vscode.FileDecoration` —
+all VS Code API objects. It **must** run in the extension host, not plain Node.js.
 
 | # | Description | Expected |
 |---|-------------|----------|
@@ -289,24 +354,6 @@ otherwise they belong in the integration suite.
 | 13 | File appears in git's dirty set (`dirtyPaths`) | Explorer URI NOT decorated (avoids double badge alongside git's own badge) |
 | 14 | File not in git's dirty set | Explorer URI IS decorated |
 | 15 | Fragment URI (`file.txt#gitbase`) | Decorated in addition to the plain URI (supports SCM row highlighting) |
-
----
-
-## 3. Integration Tests
-
-Integration tests run inside a real VS Code extension host via `@vscode/test-electron`.
-Each test suite creates a temporary git repository in a `tmp` directory, registers it
-as a workspace folder, and waits for the extension to activate. A shared helper
-(`gitFixture.ts`) handles repo creation, commits, and cleanup.
-
-```ts
-// helpers/gitFixture.ts (sketch)
-export async function makeRepo(opts: { commits?: CommitSpec[] }): Promise<{ root: string; dispose: () => void }>
-export async function git(root: string, ...args: string[]): Promise<string>
-```
-
-Where needed, tests access the provider instance directly via the extension's exported
-`activate()` function, or through the `providers` map exposed for testing.
 
 ### 3.1 Extension Activation & Provider Lifecycle
 
@@ -413,42 +460,45 @@ changes and assert the SCM list.
 | 12 | File reverted to match base after list was built | "No changes to copy" notification |
 | 13 | Invoked from Explorer URI (not SCM resource) | Resolves via `getResourceState`; same patch produced |
 | 14 | Invoked from editor title bar URI | Same patch as from SCM panel |
+| 15 | R file (rename-only, content unchanged) | Patch uses `lastDiffRef` and the new relative path; output is a rename-only diff |
+| 16 | R file (rename + content edit) | Patch includes both the rename header and content changes |
 
 #### `taskChanges.openDiff`
 
 | # | Description | Expected |
 |---|-------------|----------|
-| 15 | M file from SCM panel click | Diff editor opens with `basegit:` on left, `file:` on right |
-| 16 | D file from SCM panel click | Read-only `basegit:` opens (no right side) |
-| 17 | A/U file from SCM panel click | Working file opens (no diff) |
-| 18 | Binary file click | `binaryNotice` info message; no editor opened |
-| 19 | `taskChanges.openDiff` command from Explorer | `openDiffForUri` resolves correct provider |
-| 20 | `taskChanges.openDiff` when file not in any provider | No-op (no crash) |
+| 17 | M file from SCM panel click | Diff editor opens with `basegit:` on left, `file:` on right |
+| 18 | D file from SCM panel click | Read-only `basegit:` opens (no right side) |
+| 19 | A/U file from SCM panel click | Working file opens (no diff) |
+| 20 | Binary file click | `binaryNotice` info message; no editor opened |
+| 21 | `taskChanges.openDiff` command from Explorer | `openDiffForUri` resolves correct provider |
+| 22 | `taskChanges.openDiff` when file not in any provider | No-op (no crash) |
+| 23 | R file (rename): left side uses `oldPath` | `basegit:` URI on left encodes `oldPath`; content matches `git show <ref>:<oldPath>` |
 
 #### `taskChanges.openFile`
 
 | # | Description | Expected |
 |---|-------------|----------|
-| 21 | Resource URI has `#gitbase` fragment | Fragment stripped before `openWithoutAutoReveal`; opened URI has no fragment |
-| 22 | Resource URI arrives as plain JSON (not `vscode.Uri` instance) | `vscode.Uri.from()` normalises it; file opens correctly |
+| 24 | Resource URI has `#gitbase` fragment | Fragment stripped before `openWithoutAutoReveal`; opened URI has no fragment |
+| 25 | Resource URI arrives as plain JSON (not `vscode.Uri` instance) | `vscode.Uri.from()` normalises it; file opens correctly |
 
 #### `taskChanges.refresh`
 
 | # | Description | Expected |
 |---|-------------|----------|
-| 23 | From SCM title bar (passes `SourceControl`) | Schedules refresh without repo picker |
-| 24 | From command palette, one repo open | No repo picker; refreshes directly |
-| 25 | From command palette, two repos open | Repo picker appears |
-| 26 | From command palette, zero repos open | Silent no-op (no picker, no error) |
-| 27 | `selectBase` with `sc` arg that does not match any provider | Silent no-op (returns `undefined`) |
+| 26 | From SCM title bar (passes `SourceControl`) | Schedules refresh without repo picker |
+| 27 | From command palette, one repo open | No repo picker; refreshes directly |
+| 28 | From command palette, two repos open | Repo picker appears |
+| 29 | From command palette, zero repos open | Silent no-op (no picker, no error) |
+| 30 | `selectBase` with `sc` arg that does not match any provider | Silent no-op (returns `undefined`) |
 
 #### `openWithoutAutoReveal`
 
 | # | Description | Expected |
 |---|-------------|----------|
-| 28 | Untracked file opened via click | File appears in editor; no error |
-| 29 | `scm.autoReveal` setting is not read or written | Setting value unchanged before and after the call |
-| 30 | SCM sidebar becomes the focused view | `workbench.view.scm` command executes (verify via command spy) |
+| 31 | Untracked file opened via click | File appears in editor; no error |
+| 32 | `scm.autoReveal` setting is not read or written | Setting value unchanged before and after the call |
+| 33 | SCM sidebar becomes the focused view | `workbench.view.scm` command executes (verify via command spy) |
 
 ### 3.4 Diff Content Correctness
 
@@ -464,12 +514,16 @@ These tests verify the `basegit:` content provider returns the correct historica
 | 4 | File that did not exist at ref | Returns `(file did not exist at <ref>)` placeholder |
 | 5 | Rename R entry: left side uses `oldPath` | Content matches `git show <ref>:<oldPath>` |
 | 6 | D file: base-side shows historical content | Full historical content visible |
-| 7 | A/U file: base-side is empty | `EMPTY_URI` produces empty content |
+| 7 | A (staged new) file: diff opens with `EMPTY_URI` left side | Left side URI has `empty:` scheme; diff shows empty content on the left |
+| 7b | `EmptyContentProvider`: `provideTextDocumentContent` for `empty:` URI | Returns empty string `""` — the left side of an added-file diff is always empty |
+| 7c | U (untracked) file: row opens working file; no `basegit:` URI involved | `EMPTY_URI` is never constructed for U; the row-click command opens the file directly, not via `vscode.diff` |
 | 8 | `provideOriginalResource` returns `undefined` for non-file URI | No gutter markers for scheme other than `file:` |
 | 9 | `provideOriginalResource` returns `undefined` when base = HEAD | No gutter markers when no base selected |
 | 10 | `provideOriginalResource` returns `basegit:` URI for M file | URI query encodes correct root/ref/fp |
-| 11 | `provideOriginalResource` returns `undefined` for U and D files | No gutter markers (no base or no working tree) |
+| 11 | `provideOriginalResource` returns `undefined` for U files | U: excluded by `contextValue === 'U'` check |
+| 11b | `provideOriginalResource` returns `undefined` for D files | D: excluded by `contextValue === 'D'` check |
 | 12 | `provideOriginalResource` returns `undefined` for file outside repo | Path-prefix check excludes non-repo files |
+| 13 | `provideOriginalResource` for R (rename) file uses new path | Relative path computed from `uri.fsPath` (new name), not `oldPath` — the gutter shows changes since the base, which tracks renames |
 
 ### 3.5 Base Persistence & Recovery
 
@@ -496,23 +550,25 @@ These tests verify the `basegit:` content provider returns the correct historica
 | 10 | Auto-recovery fails (no default detectable) | Warning notification with `Select Base` button; base cleared to HEAD |
 | 11 | Orphaned commit SHA (gc'd) | Same validation failure as deleted branch |
 | 12 | Deleted tag SHA | Same path; warning shown because tag type shows warning even on successful recovery |
+| 13 | After recovery: `provideOriginalResource` returns `undefined` | Quick diff gutter clears — `baseRef` is now `'HEAD'`, so `provideOriginalResource` returns `undefined` for all files |
+| 14 | After recovery to new default: `provideOriginalResource` returns `basegit:` URI for M file | Once recovery sets a new base, `lastDiffRef` updates and gutter markers re-appear |
 
 #### Auto-detection on first open
 
 | # | Description | Expected |
 |---|-------------|----------|
-| 13 | `origin/HEAD` configured | `detectDefaultBranch` returns `origin/main`; base set without user action |
-| 14 | `origin/main` exists, `origin/HEAD` absent | Step 3 (`origin/main` fallback) returns correct ref |
-| 15 | `origin/master` only | Step 3 returns `origin/master` |
-| 16 | No remotes at all, no tracking branch | `detectDefaultBranch` returns `null`; label stays `HEAD · Select a base to begin` |
-| 17 | Tracking branch (`HEAD@{upstream}`) as last resort | Step 4 returns upstream value |
+| 15 | `origin/HEAD` configured | `detectDefaultBranch` returns `origin/main`; base set without user action |
+| 16 | `origin/main` exists, `origin/HEAD` absent | Step 3 (`origin/main` fallback) returns correct ref |
+| 17 | `origin/master` only | Step 3 returns `origin/master` |
+| 18 | No remotes at all, no tracking branch | `detectDefaultBranch` returns `null`; label stays `HEAD · Select a base to begin` |
+| 19 | Tracking branch (`HEAD@{upstream}`) as last resort | Step 4 returns upstream value |
 
 #### Auto-detection done flag
 
 | # | Description | Expected |
 |---|-------------|----------|
-| 18 | User manually selects a base | `autoDetectDone` set to `true`; `detectDefaultBranch` not called on subsequent refreshes |
-| 19 | Base deleted and recovered after manual selection | Recovery runs normally; `autoDetectDone` remains `true` (detection not re-triggered) |
+| 20 | User manually selects a base | `autoDetectDone` set to `true`; `detectDefaultBranch` not called on subsequent refreshes |
+| 21 | Base deleted and recovered after manual selection | Recovery runs normally; `autoDetectDone` remains `true` (detection not re-triggered) |
 
 ### 3.6 Status Bar
 
@@ -525,21 +581,20 @@ These tests verify the `basegit:` content provider returns the correct historica
 | 3 | Tag base | `'$(tag) v1.0'` |
 | 4 | Commit base | `'$(git-commit) <subject>'` |
 | 5 | Long label (>30 chars) | Truncated with `…` at 30 chars |
-| 6 | PR base-only mode | `'$(github) PR #N'` |
+| 6 | PR base (`scm.label` matches `PR #N` format) | `'$(github) PR #42'` |
 | 7 | Status bar click command | `command.command === 'taskChanges.selectBase'`; `command.arguments[0]` is the SCM instance |
 | 8 | Single repo: always visible | `statusBarItem.isVisible === true` regardless of active editor |
-| 9 | PR base: `scm.label` matches `PR #N` format | `'$(github) PR #42'` |
-| 10 | `scm.label` does not match `PR #N` (e.g. raw branch name) | Raw label shown without PR icon |
+| 9 | `scm.label` does not match `PR #N` (e.g. raw branch name) | Raw label shown without PR icon |
 
 #### Multi-repo status bar (single file, two providers)
 
 | # | Description | Expected |
 |---|-------------|----------|
-| 11 | Active editor belongs to repo A | Repo A status bar visible; repo B status bar hidden |
-| 12 | Active editor belongs to repo B | Repo B visible; repo A hidden |
-| 13 | No active editor | Both status bars visible |
-| 14 | Active editor not in any repo | Both status bars visible |
-| 15 | Close all editors | Both status bars visible |
+| 10 | Active editor belongs to repo A | Repo A status bar visible; repo B status bar hidden |
+| 11 | Active editor belongs to repo B | Repo B visible; repo A hidden |
+| 12 | No active editor | Both status bars visible |
+| 13 | Active editor not in any repo | Both status bars visible |
+| 14 | Close all editors | Both status bars visible |
 
 ### 3.7 Context Key (Explorer/Editor Menus)
 
@@ -646,8 +701,8 @@ The `taskChanges.isChangedFile` context key controls whether `Open Diff Against 
 
 | # | Description | Expected |
 |---|-------------|----------|
-| 9 | 51 commits (> 50 limit) | First call returns 50 items; `paging.cursor` is hash of 50th entry |
-| 10 | 50 commits (= limit) | Returns 50 items; `paging.cursor` is hash of 50th |
+| 9 | 51 commits (> default limit) | First call (no cursor, `options.limit=50`) requests 51 from git, gets 51 back; returns 50 items; `paging.cursor` is hash of 50th entry |
+| 10 | 50 commits exactly | First call requests 51, gets 50 back; `50 >= 51` is false; returns 50 items; `paging` is `undefined` |
 | 11 | 49 commits (< limit) | Returns 49 items; `paging` is `undefined` |
 | 12 | Second page from cursor | Items are strictly older than the cursor commit |
 | 13 | Cursor is root commit (no parent) | Returns `[]`; pagination ends |
@@ -670,6 +725,7 @@ The `taskChanges.isChangedFile` context key controls whether `Open Diff Against 
 | 20 | `fireChanged()` fires `_onDidChange` with `undefined` | Listener receives `undefined` (full refresh) |
 | 21 | Base change on any provider → `onDidChangeBase` fires | `fireChanged()` called; timeline reloads |
 | 22 | New provider added → `onDidChangeBase` subscription created in `addRepo` | Base change on new provider also refreshes timeline |
+| 23 | Deleted-ref recovery fires `onDidChangeBase` | Timeline panel re-queries after recovery clears the base |
 
 ---
 
@@ -680,13 +736,13 @@ The `taskChanges.isChangedFile` context key controls whether `Open Diff Against 
 | `src/git.ts` — `parseNameStatus` | ✓ §2.1 | via §3.2 |
 | `src/git.ts` — `parseBinarySet` | ✓ §2.2 | via §3.2 |
 | `src/git.ts` — `isSha` | ✓ §2.3 | — |
-| `src/git.ts` — `gitOrNull` error handling | — | via §3.2 |
+| `src/git.ts` — `gitOrNull` error handling | — | not directly tested (implicitly exercised when git commands fail in §3.2/#12) |
 | `src/git.ts` — `detectDefaultBranch` (4 steps) | — | ✓ §3.5 |
-| `src/git.ts` — `detectRefType` | — | via §3.3 |
+| `src/git.ts` — `detectRefType` | ✓ §2.3b | ✓ §3.5 |
 | `src/git.ts` — `getMergeBase` | — | via §3.2 |
 | `src/content.ts` — `makeBaseUri` / `parseBaseUri` | ✓ §2.6 | via §3.4 |
 | `src/content.ts` — `BaseGitContentProvider` | — | ✓ §3.4 |
-| `src/decorations.ts` — `TaskChangesDecorationProvider` | ✓ §2.7 | ✓ §3.8 |
+| `src/decorations.ts` — `TaskChangesDecorationProvider` | — | ✓ §3.0 |
 | `src/provider.ts` — `TaskChangesProvider` | — | ✓ §3.2–3.7 |
 | `src/provider.ts` — `provideOriginalResource` | — | ✓ §3.4 |
 | `src/provider.ts` — `getResourceState` | — | ✓ §3.3 |
@@ -703,5 +759,5 @@ The `taskChanges.isChangedFile` context key controls whether `Open Diff Against 
 | `src/blame.ts` — `LRUCache` | ✓ §2.5 | — |
 | `src/blame.ts` — `GitBaseBlameController` | — | ✓ §3.9 |
 | `src/timelineProvider.ts` — `TaskChangesTimelineProvider` | — | ✓ §3.10 |
-| `src/labels.ts` — `diffTitle` / `baseFragment` | ✓ §2.8 | via §3.4 |
+| `src/labels.ts` — `diffTitle` / `baseFragment` | ✓ §2.7 | via §3.4 |
 | `src/pr.ts` — GitHub PR flows | — | manual (Combined-05) |
