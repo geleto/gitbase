@@ -7,7 +7,7 @@
   "categories": ["SCM Providers"],
   "activationEvents": ["workspaceContains:.git"],
   "icon": "images/logo.png",
-  "main": "./out/extension",
+  "main": "./out/src/extension",
   "contributes": {
     "commands": [
       {
@@ -123,11 +123,14 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "test:unit": "mocha --ui tdd --timeout 10000 'out/tests/unit/**/*.test.js'"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
     "@types/node": "^20.0.0",
+    "@types/mocha": "^10.0.0",
+    "mocha": "^10.0.0",
     "typescript": "^5.3.0"
   }
 }

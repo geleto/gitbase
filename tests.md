@@ -60,31 +60,30 @@ a compiled extension and a VS Code installation. Both test suites use Mocha TDD 
 ### File layout
 
 ```
-src/
-  test/
-    unit/
-      parseNameStatus.test.ts
-      parseBinarySet.test.ts
-      isSha.test.ts
-      parseGitBlame.test.ts
-      lruCache.test.ts
-      uriHelpers.test.ts
-      labels.test.ts
-    integration/
-      runTests.ts          ← @vscode/test-electron entry point
-      activation.test.ts
-      resourceStates.test.ts
-      commands.test.ts
-      diffContent.test.ts
-      persistence.test.ts
-      statusBar.test.ts
-      contextKey.test.ts
-      multiRepo.test.ts
-      decorationProvider.test.ts  ← requires extension host (vscode.Uri, EventEmitter, FileDecoration)
-      blame.test.ts
-      timeline.test.ts
-    helpers/
-      gitFixture.ts        ← creates temp repos, waitForResourceStates, captureNotifications, spyCommand
+tests/
+  unit/
+    parseNameStatus.test.ts
+    parseBinarySet.test.ts
+    isSha.test.ts
+    parseGitBlame.test.ts
+    lruCache.test.ts
+    uriHelpers.test.ts
+    labels.test.ts
+  integration/
+    runTests.ts          ← @vscode/test-electron entry point
+    activation.test.ts
+    resourceStates.test.ts
+    commands.test.ts
+    diffContent.test.ts
+    persistence.test.ts
+    statusBar.test.ts
+    contextKey.test.ts
+    multiRepo.test.ts
+    decorationProvider.test.ts  ← requires extension host (vscode.Uri, EventEmitter, FileDecoration)
+    blame.test.ts
+    timeline.test.ts
+  helpers/
+    gitFixture.ts        ← creates temp repos, waitForResourceStates, captureNotifications, spyCommand
 ```
 
 ### Exports required before tests can run

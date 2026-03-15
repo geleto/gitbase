@@ -28,7 +28,7 @@ interface BlameInformation {
 // Parses `git blame --root --incremental` output.
 // Adapted from gitext parseGitBlame() in extensions/git/src/git.ts.
 
-function parseGitBlame(data: string): BlameInformation[] {
+export function parseGitBlame(data: string): BlameInformation[] {
   const commitRegex = /^([0-9a-f]{40})/
   const info = new Map<string, BlameInformation>()
 
@@ -77,7 +77,7 @@ function parseGitBlame(data: string): BlameInformation[] {
 
 // ── Simple LRU cache ──────────────────────────────────────────────────────────
 
-class LRUCache<K, V> {
+export class LRUCache<K, V> {
   private readonly map = new Map<K, V>()
   constructor(private readonly limit: number) {}
 
