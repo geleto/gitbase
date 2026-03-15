@@ -16,6 +16,8 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
   readonly scm: vscode.SourceControl
   private readonly group: vscode.SourceControlResourceGroup
   private readonly statusBarItem: vscode.StatusBarItem
+  private readonly _onDidChangeResourceStates = new vscode.EventEmitter<void>()
+  readonly onDidChangeResourceStates: vscode.Event<void> = this._onDidChangeResourceStates.event
   private readonly subs: vscode.Disposable[] = []
 
   private baseRef         = 'HEAD'
@@ -100,6 +102,20 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
     if (state.contextValue === 'U' || state.contextValue === 'D') return undefined
     const rel = nodePath.relative(root, uri.fsPath).replace(/\\/g, '/')
     return makeBaseUri(root, this.lastDiffRef, rel)
+  }
+
+  // ── Public helpers for extension.ts ───────────────────────────────────────
+  getResourceState(uri: vscode.Uri): vscode.SourceControlResourceState | undefined {
+    return this.group.resourceStates.find(r =>
+      vscode.Uri.from(r.resourceUri).with({ fragment: '' }).fsPath === uri.fsPath
+    )
+  }
+
+  openDiffForUri(uri: vscode.Uri): void {
+    const state = this.getResourceState(uri)
+    if (state?.command) {
+      void vscode.commands.executeCommand(state.command.command, ...(state.command.arguments ?? []))
+    }
   }
 
   schedule(): void {
@@ -232,6 +248,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
       ? new Set(changes.map(c => c.path))
       : new Set([...(dirtyOut ?? '').split('\0').filter(Boolean), ...untracked])
     this.decoProvider.update(root, changes, dirtyPaths)
+    this._onDidChangeResourceStates.fire()
   }
 
   private makeState(root: string, ref: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
@@ -313,6 +330,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
     this.disposed = true
     this.subs.forEach(d => d.dispose())
     if (this.timer) clearTimeout(this.timer)
+    this._onDidChangeResourceStates.dispose()
     this.statusBarItem.dispose()
     this.scm.dispose()
     this.decoProvider.clear(this.repo.rootUri.fsPath)

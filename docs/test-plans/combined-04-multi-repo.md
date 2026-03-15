@@ -8,6 +8,7 @@
 | FS-05 · SCM Label & Decorations | S09 |
 | FS-06 · Persistence & Recovery | S08 |
 | Status Bar | Multi-repo active-editor switching (Section D.3) |
+| Context Menus | Explorer Open Diff resolves to correct repo (Section D.1b) |
 
 ## Prerequisites
 
@@ -166,6 +167,20 @@ echo "change" >> "$REPO_B/file-b.txt"
 [User] Right-click `file-b.txt` in **repo B's** GitBase SCM list → Copy Relative Path.
 
 Expected: The clipboard contains `file-b.txt` (relative to repo B's root), NOT a path relative to repo A's root.
+
+### D.1b — Open Diff from Explorer resolves to correct repo
+
+**Precondition:** A file from repo B is the active editor (open and focused). That file appears as changed in repo B's GitBase panel.
+
+[User] Right-click the file in the Explorer.
+
+Expected: `Open Diff Against Base` appears in the context menu.
+
+[User] Click `Open Diff Against Base`.
+
+Expected: The diff opens using repo B's base (not repo A's). Verify by checking the left-side tab title shows repo B's base label.
+
+Note: The command resolves the correct provider using `resolveProviderForResource` — the deepest matching repo root wins.
 
 ### D.2 — Refresh command prompts for repo selection (`FS-07 S06`)
 

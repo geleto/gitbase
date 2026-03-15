@@ -10,6 +10,7 @@
 | FS-04 · File Actions | S01, S02, S03, S03b, S03c, S04, S05, S06, S07, S08, S09, S10, S11, S12, S13, S14, S15 |
 | FS-05 · SCM Label & Decorations | S01, S02, S03, S06, S07, S08, S08b, S10 |
 | Quick Diff Provider | Gutter markers for M/U/D files, base vs index distinction, base change update (Section G) |
+| Context Menus | Explorer right-click and editor title bar Open Diff / Copy Patch (Section C.19, C.20) |
 | Status Bar | Initial display and per-picker-selection updates (Section D.0, D.1, D.4) |
 
 ## Scenarios Excluded from This Plan
@@ -495,6 +496,34 @@ git push origin main
 git checkout feature/alpha
 git fetch origin
 ```
+
+### C.19 — Open Diff from Explorer context menu
+
+**Precondition:** FILE_M is the active editor (open and focused). Base is `Branch · origin/main`.
+
+[User] Switch to the Explorer view. Right-click FILE_M.
+
+Expected: The context menu contains `Open Diff Against Base` in the compare group.
+
+[User] Click `Open Diff Against Base`.
+
+Expected: A diff editor opens for FILE_M — identical to clicking FILE_M's row in the GitBase SCM panel.
+
+Note: The `Open Diff Against Base` item appears only when FILE_M is the active editor (the `taskChanges.isChangedFile` context key is set based on the active editor, not the right-clicked item). If FILE_M is in the change list but is not the active editor, first open it, then right-click in the Explorer.
+
+### C.20 — Copy Patch from editor title bar
+
+**Precondition:** FILE_M is the active editor.
+
+[User] Click the `…` overflow menu in the editor title bar (top-right of the editor area).
+
+Expected: `Copy Changes (Patch)` appears in the menu.
+
+[User] Click `Copy Changes (Patch)`.
+
+Expected: A notification reads `Patch copied for FILE_M`. The clipboard contains a valid unified diff.
+
+[Check] Verify it produces the same patch as right-clicking in the SCM panel: compare the clipboard with the result of C.13.
 
 ---
 

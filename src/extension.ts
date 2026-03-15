@@ -39,35 +39,48 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     const p = new TaskChangesProvider(repo, ctx, content, decoProvider)
     providers.set(root, p)
     ctx.subscriptions.push(p)
+    // Re-evaluate the Explorer/editor context key whenever this provider's files change
+    ctx.subscriptions.push(p.onDidChangeResourceStates(() =>
+      updateActiveEditorContext(vscode.window.activeTextEditor)
+    ))
   }
 
   // onDidOpenRepository handles repos opened after initialization (e.g. multi-root).
   // For the initial scan we must wait for state === 'initialized'; otherwise
   // api.repositories can be empty when vscode.git fires onDidOpenRepository
   // during its own activate() — before we have a chance to register the listener.
-  // Show the status bar item for the repo that owns the active editor;
-  // hide all others. When there is only one repo, or no match, show all.
-  function updateStatusBars(editor?: vscode.TextEditor): void {
-    if (providers.size <= 1) { providers.forEach(p => p.showStatusBar()); return }
-    const owner = editor?.document.uri ? resolveProviderForResource(editor.document.uri) : undefined
-    providers.forEach(p => owner && p !== owner ? p.hideStatusBar() : p.showStatusBar())
+  // Update status bar visibility and the Explorer/editor "isChangedFile" context key
+  // whenever the active editor changes. Called also on repo open/close and provider refresh.
+  function updateActiveEditorContext(editor?: vscode.TextEditor): void {
+    // Status bars: show only the item for the active editor's repo (hide others in multi-repo)
+    if (providers.size <= 1) { providers.forEach(p => p.showStatusBar()) }
+    else {
+      const owner = editor?.document.uri ? resolveProviderForResource(editor.document.uri) : undefined
+      providers.forEach(p => owner && p !== owner ? p.hideStatusBar() : p.showStatusBar())
+    }
+    // Context key for Explorer/editor menus: true when the active file has GitBase changes
+    const uri = editor?.document.uri
+    const isChanged = uri?.scheme === 'file'
+      ? [...providers.values()].some(p => p.getResourceState(uri) !== undefined)
+      : false
+    void vscode.commands.executeCommand('setContext', 'taskChanges.isChangedFile', isChanged)
   }
-  ctx.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateStatusBars))
+  ctx.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateActiveEditorContext))
 
-  ctx.subscriptions.push(api.onDidOpenRepository(repo => { addRepo(repo); updateStatusBars(vscode.window.activeTextEditor) }))
+  ctx.subscriptions.push(api.onDidOpenRepository(repo => { addRepo(repo); updateActiveEditorContext(vscode.window.activeTextEditor) }))
   if (api.state === 'initialized') {
     api.repositories.forEach(addRepo)
-    updateStatusBars(vscode.window.activeTextEditor)
+    updateActiveEditorContext(vscode.window.activeTextEditor)
   } else {
     ctx.subscriptions.push(api.onDidChangeState(state => {
-      if (state === 'initialized') { api.repositories.forEach(addRepo); updateStatusBars(vscode.window.activeTextEditor) }
+      if (state === 'initialized') { api.repositories.forEach(addRepo); updateActiveEditorContext(vscode.window.activeTextEditor) }
     }))
   }
   ctx.subscriptions.push(
     api.onDidCloseRepository(repo => {
       const p = providers.get(repo.rootUri.fsPath)
       if (p) { p.dispose(); providers.delete(repo.rootUri.fsPath) }
-      updateStatusBars(vscode.window.activeTextEditor)
+      updateActiveEditorContext(vscode.window.activeTextEditor)
     })
   )
 
@@ -117,6 +130,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     vscode.commands.registerCommand('taskChanges.openUntracked', (uri: vscode.Uri) => {
       void openWithoutAutoReveal(vscode.Uri.from(uri))
     }),
+    // Invoked from Explorer/editor context menus — opens the diff (or file) for the given URI
+    // by re-using the same command stored on the resource state (identical to a row click).
+    vscode.commands.registerCommand('taskChanges.openDiff', (uri: vscode.Uri) => {
+      if (!uri) return
+      const fileUri = vscode.Uri.from(uri).with({ fragment: '' })
+      resolveProviderForResource(fileUri)?.openDiffForUri(fileUri)
+    }),
     vscode.commands.registerCommand('taskChanges.binaryNotice', (filePath: string) => {
       void vscode.window.showInformationMessage(`Binary file: ${nodePath.basename(filePath)} — diff not available.`)
     }),
@@ -131,14 +151,24 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       const provider = resolveProviderForResource(uri)
       void vscode.env.clipboard.writeText(nodePath.relative(provider?.scm.rootUri?.fsPath ?? '', uri.fsPath))
     }),
-    vscode.commands.registerCommand('taskChanges.copyPatch', async (resource: vscode.SourceControlResourceState) => {
-      if (!resource?.resourceUri) return
-      const uri = vscode.Uri.from(resource.resourceUri).with({ fragment: '' })
+    vscode.commands.registerCommand('taskChanges.copyPatch', async (resourceOrUri: vscode.SourceControlResourceState | vscode.Uri) => {
+      // Resolve URI and context value regardless of invocation source (SCM panel or Explorer/editor)
+      let uri: vscode.Uri
+      let contextValue: string | undefined
+      if (resourceOrUri instanceof vscode.Uri) {
+        uri = resourceOrUri.with({ fragment: '' })
+        contextValue = resolveProviderForResource(uri)?.getResourceState(uri)?.contextValue
+        if (!contextValue) return  // file not currently a GitBase change
+      } else {
+        if (!resourceOrUri?.resourceUri) return
+        uri = vscode.Uri.from(resourceOrUri.resourceUri).with({ fragment: '' })
+        contextValue = resourceOrUri.contextValue
+      }
       const provider = resolveProviderForResource(uri)
       if (!provider) return
-      const root  = provider.scm.rootUri!.fsPath
-      const fp    = nodePath.relative(root, uri.fsPath).replace(/\\/g, '/')
-      if (resource.contextValue === 'U') {
+      const root = provider.scm.rootUri!.fsPath
+      const fp   = nodePath.relative(root, uri.fsPath).replace(/\\/g, '/')
+      if (contextValue === 'U') {
         void vscode.window.showInformationMessage(`Patch not available for untracked file: ${nodePath.basename(uri.fsPath)}`)
         return
       }

@@ -41,6 +41,13 @@
       {
         "command": "taskChanges.copyPatch",
         "title": "Copy Changes (Patch)",
+        "icon": "$(diff)",
+        "category": "Task Changes"
+      },
+      {
+        "command": "taskChanges.openDiff",
+        "title": "Open Diff Against Base",
+        "icon": "$(diff)",
         "category": "Task Changes"
       }
     ],
@@ -72,6 +79,32 @@
           "command": "taskChanges.copyPatch",
           "when": "scmProvider == taskchanges && scmResourceState != U",
           "group": "3_copy@3"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "taskChanges.openDiff",
+          "when": "taskChanges.isChangedFile && resourceScheme == file",
+          "group": "3_compare@10"
+        },
+        {
+          "command": "taskChanges.copyPatch",
+          "when": "taskChanges.isChangedFile && resourceScheme == file",
+          "group": "3_compare@11"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "taskChanges.copyPatch",
+          "when": "taskChanges.isChangedFile && resourceScheme == file",
+          "group": "1_diff@10"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "taskChanges.openDiff",
+          "when": "taskChanges.isChangedFile && resourceScheme == file",
+          "group": "1_diff@10"
         }
       ],
       "scm/title": [
