@@ -214,7 +214,11 @@ export class TaskChangesProvider implements vscode.Disposable {
     }
 
     const d = DECO[status] ?? DECO['M']!
-    const diffTitle = `${nodePath.basename(c.path)} (since ${this.baseLabel})`
+    const truncate = (s: string) => s.length > 30 ? s.slice(0, 30) + '…' : s
+    const diffSuffix = this.baseType === 'Commit' ? this.baseRef.slice(0, 7) + '…'
+                     : this.baseType === 'PR'     ? truncate(this.baseLabel.match(/GitHub PR #\d+/)?.[0] ?? this.baseLabel)
+                     :                              truncate(this.baseLabel)
+    const diffTitle = `${nodePath.basename(c.path)} (${diffSuffix})`
 
     const command: vscode.Command = isBin
       ? { title: 'Binary file', command: 'taskChanges.binaryNotice', arguments: [c.path] }
