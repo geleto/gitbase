@@ -47,10 +47,29 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
   readonly onDidChange          = this._onDidChange.event
 
   private readonly subs: vscode.Disposable[] = []
-  private readonly reg: vscode.Disposable
+  private readonly reg:  vscode.Disposable
+  /** True when registerTimelineProvider succeeded and the Timeline panel is active. */
+  readonly isRegistered: boolean
 
   constructor(private readonly getProviders: () => IterableIterator<TaskChangesProvider>) {
-    this.reg = vscode.workspace.registerTimelineProvider('file', this)
+    // registerTimelineProvider is a proposed API in some VS Code builds.
+    // Check for existence first, then catch any runtime refusal (e.g. proposal not declared).
+    // If unavailable, the extension still activates — the Timeline panel just won't appear.
+    const register = (vscode.workspace as any).registerTimelineProvider as
+      (typeof vscode.workspace.registerTimelineProvider) | undefined
+
+    if (typeof register !== 'function') {
+      this.reg = { dispose() {} }
+      this.isRegistered = false
+      return
+    }
+    try {
+      this.reg = register.call(vscode.workspace, 'file', this)
+      this.isRegistered = true
+    } catch {
+      this.reg = { dispose() {} }
+      this.isRegistered = false
+    }
   }
 
   /** Call whenever any provider's base changes so VS Code refreshes the Timeline panel. */
@@ -59,6 +78,18 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
   }
 
   async provideTimeline(
+    uri:     vscode.Uri,
+    options: vscode.TimelineOptions,
+    token:   vscode.CancellationToken,
+  ): Promise<vscode.Timeline> {
+    try {
+      return await this._provideTimeline(uri, options, token)
+    } catch {
+      return { items: [] }
+    }
+  }
+
+  private async _provideTimeline(
     uri:     vscode.Uri,
     options: vscode.TimelineOptions,
     token:   vscode.CancellationToken,

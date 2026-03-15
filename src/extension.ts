@@ -11,7 +11,10 @@ import { TaskChangesTimelineProvider } from './timelineProvider'
 
 // ── Activation ────────────────────────────────────────────────────────────────
 
-const providers = new Map<string, TaskChangesProvider>()
+export const providers = new Map<string, TaskChangesProvider>()
+
+export let blameController: GitBaseBlameController | undefined
+export let timelineProvider: TaskChangesTimelineProvider | undefined
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   providers.clear()
@@ -28,13 +31,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   const content          = new BaseGitContentProvider()
   const decoProvider     = new TaskChangesDecorationProvider()
-  const timelineProvider = new TaskChangesTimelineProvider(() => providers.values())
+  timelineProvider       = new TaskChangesTimelineProvider(() => providers.values())
+  blameController        = new GitBaseBlameController()
   ctx.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider('basegit', content),
     vscode.workspace.registerTextDocumentContentProvider('empty',   new EmptyContentProvider()),
     vscode.window.registerFileDecorationProvider(decoProvider),
     decoProvider,
-    new GitBaseBlameController(),
+    blameController,
     timelineProvider,
   )
 
@@ -49,7 +53,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       updateActiveEditorContext(vscode.window.activeTextEditor)
     ))
     // Refresh the Timeline panel when this repo's base changes
-    ctx.subscriptions.push(p.onDidChangeBase(() => timelineProvider.fireChanged()))
+    ctx.subscriptions.push(p.onDidChangeBase(() => timelineProvider?.fireChanged()))
   }
 
   // onDidOpenRepository handles repos opened after initialization (e.g. multi-root).

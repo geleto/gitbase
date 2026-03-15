@@ -161,6 +161,8 @@ export class GitBaseBlameController implements vscode.Disposable {
   private readonly decoType = createDecoType()
   private lastEditor: vscode.TextEditor | undefined
 
+  get decorationType(): vscode.TextEditorDecorationType { return this.decoType }
+
   constructor() {
     this.subs.push(vscode.window.onDidChangeActiveTextEditor(e => this.update(e)))
     this.update(vscode.window.activeTextEditor)

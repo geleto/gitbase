@@ -14,8 +14,9 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
   static readonly NO_BASE_LABEL = 'HEAD · Select a base to begin'
 
   readonly scm: vscode.SourceControl
-  private readonly group: vscode.SourceControlResourceGroup
-  private readonly statusBarItem: vscode.StatusBarItem
+  readonly group: vscode.SourceControlResourceGroup
+  readonly statusBarItem: vscode.StatusBarItem
+  private _statusBarVisible = true
   private readonly _onDidChangeResourceStates = new vscode.EventEmitter<void>()
   readonly onDidChangeResourceStates: vscode.Event<void> = this._onDidChangeResourceStates.event
   private readonly _onDidChangeBase = new vscode.EventEmitter<void>()
@@ -85,8 +86,9 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
     return `${icon} ${label}`
   }
 
-  showStatusBar(): void { this.statusBarItem.show() }
-  hideStatusBar(): void { this.statusBarItem.hide() }
+  get statusBarVisible(): boolean { return this._statusBarVisible }
+  showStatusBar(): void { this._statusBarVisible = true;  this.statusBarItem.show() }
+  hideStatusBar(): void { this._statusBarVisible = false; this.statusBarItem.hide() }
 
   // ── QuickDiffProvider ──────────────────────────────────────────────────────
   // Returns the base-ref version of a file so VS Code can render gutter diff
