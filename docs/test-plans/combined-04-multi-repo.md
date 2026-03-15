@@ -7,6 +7,7 @@
 | FS-07 · Multi-Repo | S01, S02, S03, S03b, S03c, S04, S05, S06, S07, S07b |
 | FS-05 · SCM Label & Decorations | S09 |
 | FS-06 · Persistence & Recovery | S08 |
+| Status Bar | Multi-repo active-editor switching (Section D.3) |
 
 ## Prerequisites
 
@@ -184,6 +185,26 @@ Expected: The repo quick pick appears listing both repo folder names.
 Expected: Repo A's SCM list updates to include the changed file. Repo B's list is unaffected.
 
 Note: `taskChanges.refresh` calls `resolveProvider(sc)` (`extension.ts:90`). From the command palette (`sc` is absent, `providers.size > 1`), it shows the repo picker. From the SCM title bar `$(refresh)` button, `sc` is passed and the picker is skipped.
+
+---
+
+## Section D.3 — Status bar switches to active editor's repo
+
+**Purpose:** Verify that when multiple repos are open, the status bar item shows the base for the repo that owns the currently active file, hiding the others.
+
+**Precondition:** Both repo A and repo B have a GitBase Changes panel. Each has a different base selected (e.g. repo A: `Branch · origin/main`, repo B: `Commit · <subject>` from Section B.4).
+
+[User] Open a file from repo A in the editor (e.g. click FILE_M from repo A's GitBase panel).
+
+Expected: The status bar shows repo A's base (e.g. `⎇ origin/main`). Repo B's status bar item is hidden.
+
+[User] Open a file from repo B in the editor (e.g. click `file-b.txt` from repo B's GitBase panel).
+
+Expected: The status bar switches to show repo B's base. Repo A's status bar item is hidden.
+
+[User] Close all editors (`View → Close All Editors`).
+
+Expected: Both status bar items become visible (no active editor → no owner → show all).
 
 ---
 

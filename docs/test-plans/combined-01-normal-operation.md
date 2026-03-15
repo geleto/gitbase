@@ -498,15 +498,30 @@ git fetch origin
 
 ## Section D: Picker Selection and Label Verification
 
-**Purpose:** Verify every picker item selects the correct base ref, updates the SCM label correctly, and stores the right value in workspaceState. Label format verification (FS-05 S01–S03) is embedded into each selection rather than repeated separately.
+**Purpose:** Verify every picker item selects the correct base ref, updates the SCM label correctly, stores the right value in workspaceState, and updates the status bar item. Label format verification (FS-05 S01–S03) is embedded into each selection rather than repeated separately.
 
 **Precondition:** Base is `Branch · origin/main`. Working tree has FILE_M modified (M) so there is something visible in the SCM list to confirm the diff is updating.
+
+**Status bar note:** After every picker selection in this section, the status bar item (bottom-left of the VS Code window, showing a git icon) must update to match the label. The status bar format per base type is:
+- Branch: `$(git-branch) <branch-name>` e.g. `⎇ origin/main`
+- Tag: `$(tag) <tag-name>`
+- Commit: `$(git-commit) <commit-subject>`
+- No base: `$(git-branch) Select base…`
+
+Clicking the status bar item must open the same picker as `taskChanges.selectBase`.
+
+### D.0 — Verify initial status bar appearance
+
+[User] Observe the status bar item before opening any picker.
+
+Expected: The status bar shows `⎇ origin/main` (branch icon + branch name), matching the current SCM label.
 
 ### D.1 — Default branch shortcut (`FS-02 S01` + `FS-05 S01`)
 
 [User] Open the picker → select `Default branch`.
 
 Expected label: `Branch · origin/main`
+Expected status bar: `⎇ origin/main`
 
 [Check] Verify workspaceState (read from the extension's stored key via VS Code developer tools or extension output, or simply accept the label as confirmation for this check):
 The stored ref should be `origin/main`.
@@ -548,6 +563,7 @@ Note: Branch-type bases always use the merge-base (`getMergeBase` in `git.ts`), 
 [User] Open the picker → Tag… → select `v1.0`.
 
 Expected label: `Tag · v1.0`
+Expected status bar: tag icon + `v1.0`
 
 [Check] Verify the stored ref is the tag's full commit SHA (frozen, not the symbolic name `v1.0`):
 ```

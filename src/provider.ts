@@ -15,6 +15,7 @@ export class TaskChangesProvider implements vscode.Disposable {
 
   readonly scm: vscode.SourceControl
   private readonly group: vscode.SourceControlResourceGroup
+  private readonly statusBarItem: vscode.StatusBarItem
   private readonly subs: vscode.Disposable[] = []
 
   private baseRef         = 'HEAD'
@@ -41,13 +42,17 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.group = this.scm.createResourceGroup('changes', TaskChangesProvider.NO_BASE_LABEL)
     this.group.hideWhenEmpty = false
 
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100)
+    this.statusBarItem.command = { command: 'taskChanges.selectBase', arguments: [this.scm], title: 'Select Base' }
+    this.statusBarItem.show()
+
     const stored = ctx.workspaceState.get<string>(`taskChanges.base.${root}`)
     if (stored) {
       this.baseRef   = stored
       this.baseLabel = ctx.workspaceState.get<string>(`taskChanges.baseLabel.${root}`) ?? stored
       this.baseType  = ctx.workspaceState.get<'Branch' | 'Tag' | 'Commit' | 'PR'>(`taskChanges.baseType.${root}`)
-      this.syncLabel()
     }
+    this.syncLabel()
 
     this.subs.push(repo.state.onDidChange(() => this.schedule()))
     this.schedule()
@@ -59,7 +64,23 @@ export class TaskChangesProvider implements vscode.Disposable {
       : !this.baseType || this.baseType === 'PR'
         ? this.baseLabel
         : `${this.baseType} · ${this.baseLabel}`
+    this.statusBarItem.text    = this.statusBarText()
+    this.statusBarItem.tooltip = new vscode.MarkdownString('**GitBase** — click to select base')
   }
+
+  private statusBarText(): string {
+    if (!this.baseType || this.baseLabel === 'HEAD') return '$(git-branch) Select base\u2026'
+    if (this.baseType === 'PR') {
+      const m = this.baseLabel.match(/GitHub PR #(\d+)/)
+      return m ? `$(github) PR #${m[1]}` : `$(github) ${this.baseLabel.slice(0, 25)}\u2026`
+    }
+    const icon  = this.baseType === 'Tag' ? '$(tag)' : this.baseType === 'Commit' ? '$(git-commit)' : '$(git-branch)'
+    const label = this.baseLabel.length > 30 ? this.baseLabel.slice(0, 30) + '\u2026' : this.baseLabel
+    return `${icon} ${label}`
+  }
+
+  showStatusBar(): void { this.statusBarItem.show() }
+  hideStatusBar(): void { this.statusBarItem.hide() }
 
   schedule(): void {
     if (this.disposed) return
@@ -272,6 +293,7 @@ export class TaskChangesProvider implements vscode.Disposable {
     this.disposed = true
     this.subs.forEach(d => d.dispose())
     if (this.timer) clearTimeout(this.timer)
+    this.statusBarItem.dispose()
     this.scm.dispose()
     this.decoProvider.clear(this.repo.rootUri.fsPath)
   }
