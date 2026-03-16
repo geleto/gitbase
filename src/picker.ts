@@ -1,6 +1,8 @@
 import * as vscode from 'vscode'
+import * as nodePath from 'path'
 import { gitOrNull, detectDefaultBranch, detectRefType } from './git'
 import { BaseSelection, PrReviewState, resolvePr, exitPr, countDetachedCommits } from './pr'
+import { log as globalLog } from './log'
 
 export { BaseSelection, PrReviewState }
 
@@ -13,6 +15,7 @@ export async function pickBase(
   prReviewState?: PrReviewState,
   onRefreshNeeded?: () => void,
 ): Promise<BaseSelection | undefined> {
+  const log = (msg: string) => globalLog(`[${nodePath.basename(root)}] ${msg}`)
   // Run prerequisite queries in parallel before showing the picker.
   const [defaultBranch, unstaged, staged] = await Promise.all([
     detectDefaultBranch(root),
@@ -74,6 +77,7 @@ export async function pickBase(
         })
         if (!name) return undefined
         if (await gitOrNull(root, 'checkout', '-b', name.trim()) === null) {
+          log(`ERROR failed to create branch "${name.trim()}"`)
           void vscode.window.showErrorMessage(
             `Failed to create branch "${name.trim()}". A branch with that name may already exist.`
           )
@@ -96,17 +100,20 @@ export async function pickBase(
           'Stash and Exit', 'Cancel'
         )
         if (action !== 'Stash and Exit') return undefined
+        log('stashing changes for stash-and-exit')
         await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: exit stash')
         const retry = await vscode.window.withProgress(
           { location: vscode.ProgressLocation.Notification, title: 'Exiting GitHub PR Review…', cancellable: false },
           () => exitPr(root, prReviewState)
         )
         if (!retry.ok) {
+          log(`ERROR failed to restore branch "${prReviewState.prevBranch}" after stash-and-exit retry`)
           const act = await vscode.window.showErrorMessage(
             `Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`,
             'Force Exit'
           )
           if (act === 'Force Exit') {
+            log('WARN stash left as "gitbase: exit stash" after force exit')
             void vscode.window.showWarningMessage(
               'Your stashed changes are saved as "gitbase: exit stash". Run "git stash pop" to recover them.',
               'Copy command'
@@ -118,6 +125,7 @@ export async function pickBase(
           return undefined
         }
         if (retry.stashPopFailed) {
+          log('WARN stash pop failed after exit retry; stash is still safe')
           void vscode.window.showWarningMessage(
             'Your stashed changes could not be restored automatically — they are still safe in the stash. ' +
             'Run "git stash pop" to apply them; if there are conflicts, resolve them then run "git stash drop".',
@@ -128,6 +136,7 @@ export async function pickBase(
         }
         return retry.selection
       } else {
+        log(`ERROR failed to restore branch "${prReviewState.prevBranch}" on exit`)
         const action = await vscode.window.showErrorMessage(
           `Failed to restore previous branch. Run "git checkout ${prReviewState.prevBranch}" manually.`,
           'Force Exit'
@@ -139,6 +148,7 @@ export async function pickBase(
       return undefined
     }
     if (exitResult.stashPopFailed) {
+      log('WARN stash pop failed after exit; stash is still safe')
       void vscode.window.showWarningMessage(
         'Your stashed changes could not be restored automatically — they are still safe in the stash. ' +
         'Run "git stash pop" to apply them; if there are conflicts, resolve them then run "git stash drop".',
@@ -177,6 +187,7 @@ export async function pickBase(
     )
 
     if (result === 'not-found') {
+      log(`ERROR PR #${prNumber} not found on GitHub`)
       void vscode.window.showErrorMessage(`PR #${prNumber} was not found on GitHub. Check the PR number in the URL.`)
       return undefined
     }
@@ -185,24 +196,29 @@ export async function pickBase(
       return undefined
     }
     if (result === undefined) {
+      log(`ERROR could not fetch PR #${prNumber} from GitHub`)
       void vscode.window.showErrorMessage(`Could not fetch PR #${prNumber} from GitHub. Check the URL and your network connection.`)
       return undefined
     }
     if (result === 'fetch-failed') {
+      log('ERROR could not fetch base branch from origin')
       void vscode.window.showErrorMessage(
         `Could not fetch base branch from origin. Check your network connection.`
       )
       return undefined
     }
     if (result === 'stash-failed') {
+      log('ERROR could not stash changes before entering PR review')
       void vscode.window.showErrorMessage(
         'GitBase: could not stash your changes before entering PR review. Check that your working tree is in a valid state.'
       )
       return undefined
     }
     if (result === 'checkout-failed' || result === 'checkout-failed-stash-left') {
+      log(`ERROR failed to switch to PR #${prNumber}`)
       void vscode.window.showErrorMessage(`Failed to switch to PR #${prNumber}. Ensure origin points to GitHub.`)
       if (result === 'checkout-failed-stash-left') {
+        log('WARN stash left after checkout failure; stash is still safe')
         void vscode.window.showWarningMessage(
           'Your stashed changes could not be restored automatically — they are still safe in the stash. ' +
           'Run "git stash pop" to apply them; if there are conflicts, resolve them then run "git stash drop".',
@@ -223,6 +239,7 @@ export async function pickBase(
           if (action === 'Fetch Now') {
             const ok = await gitOrNull(root, 'fetch', 'origin')
             if (ok === null) {
+              log('ERROR git fetch failed')
               void vscode.window.showErrorMessage('GitBase: git fetch failed. Check your network connection and remote configuration.')
             } else {
               onRefreshNeeded?.()
@@ -301,6 +318,7 @@ export async function pickBase(
 
   const resolved = (await gitOrNull(root, 'rev-parse', '--verify', newRef))?.trim()
   if (!resolved) {
+    log(`ERROR "${newRef}" is not a valid Git ref`)
     void vscode.window.showErrorMessage(`GitBase: "${newRef}" is not a valid Git ref.`)
     return undefined
   }
@@ -317,6 +335,7 @@ export async function pickBase(
     const detected = await detectRefType(root, newRef)
     type = detected.type
     if (detected.shadowed === 'tag') {
+      log(`WARN "${newRef}" matches both a branch and a tag; treating as branch`)
       void vscode.window.showWarningMessage(
         `"${newRef}" matches both a branch and a tag. Treating as branch. Use the Tag… picker to select the tag.`
       )

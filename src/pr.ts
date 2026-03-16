@@ -1,6 +1,8 @@
 import * as vscode from 'vscode'
 import * as https from 'https'
+import * as nodePath from 'path'
 import { gitOrNull } from './git'
+import { log } from './log'
 
 export interface BaseSelection {
   readonly ref:      string
@@ -98,6 +100,9 @@ export async function resolvePr(
   repo: string,
   prNumber: number,
 ): Promise<BaseSelection | 'checkout-failed' | 'checkout-failed-stash-left' | 'fetch-failed' | 'stash-failed' | 'not-found' | 'auth-cancelled' | undefined> {
+  const r = nodePath.basename(root)
+  log(`[${r}] PR #${prNumber} (${owner}/${repo}) mode=${key}`)
+
   const meta = await resolvePrMeta(owner, repo, prNumber)
   if (meta === 'not-found') return 'not-found'
   if (meta === 'auth-cancelled') return 'auth-cancelled'
@@ -108,32 +113,48 @@ export async function resolvePr(
 
   let fetched = false
   if (!await gitOrNull(root, 'rev-parse', '--verify', localBase)) {
-    if (await gitOrNull(root, 'fetch', 'origin', baseRef) === null) return 'fetch-failed'
+    log(`[${r}] fetch origin ${baseRef}`)
+    if (await gitOrNull(root, 'fetch', 'origin', baseRef) === null) {
+      log(`[${r}] ERROR fetch origin ${baseRef} failed`)
+      return 'fetch-failed'
+    }
     fetched = true
   }
 
   if (key === 'pr-review') {
     const prevBranch = (await gitOrNull(root, 'symbolic-ref', '--short', 'HEAD'))?.trim() ?? 'HEAD'
+    log(`[${r}] entering PR review from branch "${prevBranch}"`)
 
     let stashSha: string | undefined
     if (isDirty) {
+      log(`[${r}] stashing dirty working tree before PR review`)
       if (await gitOrNull(root, 'stash', 'push', '-m', 'gitbase: PR review') === null) {
+        log(`[${r}] ERROR stash push failed`)
         return 'stash-failed'
       }
       stashSha = (await gitOrNull(root, 'rev-parse', 'stash@{0}'))?.trim() ?? undefined
       if (!stashSha) {
         // SHA capture failed — pop the stash we just created so the user's changes are restored.
+        log(`[${r}] ERROR stash SHA capture failed; popping stash to restore working tree`)
         await gitOrNull(root, 'stash', 'pop')
         return 'stash-failed'
       }
+      log(`[${r}] stash created: ${stashSha}`)
     }
 
+    log(`[${r}] fetch refs/pull/${prNumber}/head`)
     const fetched = await gitOrNull(root, 'fetch', 'origin', `refs/pull/${prNumber}/head`)
+    log(`[${r}] checkout --detach ${headSha.slice(0, 8)}`)
     if (fetched === null || await gitOrNull(root, 'checkout', '--detach', headSha) === null) {
-      if (stashSha && !await popStashBySha(root, stashSha)) return 'checkout-failed-stash-left'
+      log(`[${r}] ERROR checkout --detach ${headSha.slice(0, 8)} failed`)
+      if (stashSha) {
+        log(`[${r}] restoring stash ${stashSha} after checkout failure`)
+        if (!await popStashBySha(root, stashSha)) return 'checkout-failed-stash-left'
+      }
       return 'checkout-failed'
     }
 
+    log(`[${r}] now in detached HEAD at ${headSha.slice(0, 8)}, base=${localBase}`)
     return { ref: localBase, label: `GitHub PR #${prNumber} · ${owner}/${repo} · PR changes`, type: 'PR' as const, prEnter: { prevBranch, stashSha } }
   }
 
@@ -149,17 +170,30 @@ export type ExitPrResult =
  * No VS Code UI.
  */
 export async function exitPr(root: string, state: PrReviewState): Promise<ExitPrResult> {
+  const r = nodePath.basename(root)
+  log(`[${r}] exiting PR review, returning to "${state.prevBranch}"`)
+
   const unstaged = await gitOrNull(root, 'diff', '--quiet')
   const staged   = await gitOrNull(root, 'diff', '--cached', '--quiet')
-  if (unstaged === null || staged === null) return { ok: false, reason: 'dirty' }
+  if (unstaged === null || staged === null) {
+    log(`[${r}] WARN exit blocked — uncommitted changes in working tree`)
+    return { ok: false, reason: 'dirty' }
+  }
 
-  if (await gitOrNull(root, 'checkout', state.prevBranch) === null) return { ok: false }
+  log(`[${r}] checkout ${state.prevBranch}`)
+  if (await gitOrNull(root, 'checkout', state.prevBranch) === null) {
+    log(`[${r}] ERROR checkout ${state.prevBranch} failed`)
+    return { ok: false }
+  }
 
   let stashPopFailed = false
   if (state.stashSha) {
+    log(`[${r}] restoring stash ${state.stashSha}`)
     stashPopFailed = !await popStashBySha(root, state.stashSha)
+    if (stashPopFailed) log(`[${r}] WARN stash pop failed for ${state.stashSha}`)
   }
 
+  log(`[${r}] PR review exited${stashPopFailed ? ' (stash pop failed — changes still in stash)' : ''}`)
   return {
     ok: true,
     selection: { ref: state.prevBase, label: state.prevBaseLabel, type: state.prevBaseType, prExit: true },

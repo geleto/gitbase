@@ -8,6 +8,7 @@
 import * as vscode from 'vscode'
 import { gitOrNull } from './git'
 import { parseBaseUri } from './content'
+import { log } from './log'
 
 // ── Blame data types ──────────────────────────────────────────────────────────
 
@@ -185,7 +186,10 @@ export class GitBaseBlameController implements vscode.Disposable {
 
     if (!infos) {
       const raw = await gitOrNull(root, 'blame', '--root', '--incremental', ref, '--', fp)
-      if (!raw) return
+      if (!raw) {
+        log(`WARN blame returned no data for ${fp} at ${ref.slice(0, 8)}`)
+        return
+      }
       infos = parseGitBlame(raw)
       this.cache.set(cacheKey, infos)
     }

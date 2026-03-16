@@ -7,6 +7,7 @@ import { EMPTY_URI, makeBaseUri, BaseGitContentProvider } from './content'
 import { DECO, TaskChangesDecorationProvider } from './decorations'
 import { WORKAROUND_URI_FRAGMENT, assertScmContext } from './workarounds'
 import { diffTitle, baseFragment } from './labels'
+import { log } from './log'
 
 // ── TaskChangesProvider ───────────────────────────────────────────────────────
 
@@ -59,9 +60,14 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
       this.baseType  = ctx.workspaceState.get<'Branch' | 'Tag' | 'Commit' | 'PR'>(`taskChanges.baseType.${root}`)
     }
     this.syncLabel()
+    this.log(`opened${stored ? ` (base: ${this.baseLabel})` : ''}`)
 
     this.subs.push(repo.state.onDidChange(() => this.schedule()))
     this.schedule()
+  }
+
+  private log(msg: string): void {
+    log(`[${nodePath.basename(this.repo.rootUri.fsPath)}] ${msg}`)
   }
 
   private syncLabel(): void {
@@ -136,7 +142,10 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
     try {
       await this.run()
     } catch (err) {
-      void vscode.window.showErrorMessage(`GitBase: refresh failed — ${(err as Error).message ?? err}`)
+      const msg = (err as Error).message ?? String(err)
+      this.log(`ERROR refresh failed — ${msg}`)
+      if ((err as Error).stack) this.log((err as Error).stack!)
+      void vscode.window.showErrorMessage(`GitBase: refresh failed — ${msg}`)
     } finally {
       this.running = false
       if (this.dirty) this.schedule()
@@ -160,6 +169,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
           this.ctx.workspaceState.update(`taskChanges.baseType.${root}`,  'Branch'),
         ])
         this.syncLabel()
+        this.log(`base auto-detected: ${detected}`)
       }
     }
 
@@ -195,6 +205,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
         ])
         this.syncLabel()
         // Inform, don't alarm — no action needed.
+        this.log(`base ref "${ref}" no longer exists; auto-recovered to ${detected}`)
         void vscode.window.showInformationMessage(
           `GitBase: base ref "${ref}" no longer exists; auto-recovered to ${detected}.`
         )
@@ -202,6 +213,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
       } else {
         this.autoDetectDone = false
         // No recovery possible — user must act.
+        this.log(`WARN base ref "${ref}" no longer exists; no default branch detected`)
         void vscode.window.showWarningMessage(
           `GitBase: base ref "${ref}" no longer exists. Select a new base to continue.`,
           'Select Base',
@@ -220,6 +232,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
     if (this.baseType === 'Branch' || this.baseType === 'PR') {
       const mb = await getMergeBase(root, 'HEAD', ref)
       if (mb) diffRef = mb
+      else this.log(`WARN merge-base not found for HEAD vs ${ref}; diffing directly against ref`)
     }
     this.lastDiffRef = diffRef
 
@@ -234,7 +247,10 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
       gitOrNull(root, 'ls-files', '--others', '--exclude-standard', '-z'),
     ])
 
-    if (nsOut === null) { this.group.resourceStates = []; this.decoProvider.clear(root); assertScmContext(); return }
+    if (nsOut === null) {
+      this.log(`WARN diff command failed for ref ${diffRef.slice(0, 8)}; clearing panel`)
+      this.group.resourceStates = []; this.decoProvider.clear(root); assertScmContext(); return
+    }
 
     const changes = parseNameStatus(nsOut)
     const binary  = numOut ? parseBinarySet(numOut) : new Set<string>()
@@ -254,6 +270,10 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
       : new Set([...(dirtyOut ?? '').split('\0').filter(Boolean), ...untracked])
     this.decoProvider.update(root, changes, dirtyPaths)
     this._onDidChangeResourceStates.fire()
+    const summary = Object.entries(
+      changes.reduce<Record<string, number>>((acc, c) => { acc[c.status] = (acc[c.status] ?? 0) + 1; return acc }, {})
+    ).map(([s, n]) => `${n}${s}`).join(' ')
+    this.log(`refreshed: ${changes.length} change${changes.length !== 1 ? 's' : ''}${changes.length ? ` (${summary})` : ''} vs ${diffRef.slice(0, 8)}`)
   }
 
   private makeState(root: string, ref: string, c: RawChange, isBin: boolean): vscode.SourceControlResourceState {
@@ -322,6 +342,7 @@ export class TaskChangesProvider implements vscode.Disposable, vscode.QuickDiffP
     this.baseRef   = picked.ref
     this.baseLabel = picked.label
     this.baseType  = picked.type
+    this.log(`base selected: ${picked.label}`)
     await Promise.all([
       this.ctx.workspaceState.update(`taskChanges.base.${root}`,      picked.ref),
       this.ctx.workspaceState.update(`taskChanges.baseLabel.${root}`, picked.label),

@@ -11,6 +11,7 @@ import * as nodePath from 'path'
 import { gitOrNull } from './git'
 import { makeBaseUri, EMPTY_URI } from './content'
 import { TaskChangesProvider } from './provider'
+import { log } from './log'
 
 // ── Commit log ────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,6 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
 
   constructor(
     private readonly getProviders: () => IterableIterator<TaskChangesProvider>,
-    out: vscode.OutputChannel,
   ) {
     // registerTimelineProvider is a proposed API in some VS Code builds.
     // Check for existence first, then catch any runtime refusal (e.g. proposal not declared).
@@ -64,9 +64,9 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
     if (typeof register !== 'function') {
       this.reg = { dispose() {} }
       this.isRegistered = false
-      out.appendLine('GitBase: Timeline history panel is not available in this version of VS Code.')
-      out.appendLine('Note: the Timeline API is experimental and may change or be removed in future VS Code releases.')
-      out.appendLine('To enable it, launch VS Code with: --enable-proposed-api gitbase.gitbase')
+      log('Timeline history panel is not available in this version of VS Code.')
+      log('Note: the Timeline API is experimental and may change or be removed in future VS Code releases.')
+      log('To enable it, launch VS Code with: --enable-proposed-api gitbase.gitbase')
       return
     }
     try {
@@ -75,10 +75,10 @@ export class TaskChangesTimelineProvider implements vscode.TimelineProvider, vsc
     } catch {
       this.reg = { dispose() {} }
       this.isRegistered = false
-      out.appendLine('GitBase: Timeline history panel is disabled.')
-      out.appendLine('To enable it, add the following to your VS Code launch arguments:')
-      out.appendLine('  --enable-proposed-api gitbase.gitbase')
-      out.appendLine('Or, if running from source, add "timeline" to enabledApiProposals in package.json.')
+      log('Timeline history panel is disabled.')
+      log('To enable it, add the following to your VS Code launch arguments:')
+      log('  --enable-proposed-api gitbase.gitbase')
+      log('Or, if running from source, add "timeline" to enabledApiProposals in package.json.')
     }
   }
 

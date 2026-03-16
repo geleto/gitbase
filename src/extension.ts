@@ -8,6 +8,7 @@ import { registerLabelFormatter } from './labels'
 import { TaskChangesProvider } from './provider'
 import { GitBaseBlameController } from './blame'
 import { TaskChangesTimelineProvider } from './timelineProvider'
+import { initOutputChannel, log } from './log'
 
 // ── Activation ────────────────────────────────────────────────────────────────
 
@@ -51,12 +52,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   setGitPath(api.git.path)
   registerLabelFormatter(ctx)
 
-  const out              = vscode.window.createOutputChannel('GitBase')
+  const out = initOutputChannel()
+  log('GitBase activated')
   const content          = new BaseGitContentProvider()
   const decoProvider     = new TaskChangesDecorationProvider()
-  timelineProvider       = new TaskChangesTimelineProvider(() => providers.values(), out)
+  timelineProvider       = new TaskChangesTimelineProvider(() => providers.values())
   blameController        = new GitBaseBlameController()
   ctx.subscriptions.push(
+    out,
     vscode.workspace.registerTextDocumentContentProvider('basegit', content),
     vscode.workspace.registerTextDocumentContentProvider('empty',   new EmptyContentProvider()),
     vscode.window.registerFileDecorationProvider(decoProvider),
