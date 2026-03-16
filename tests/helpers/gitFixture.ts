@@ -3,7 +3,7 @@ import * as path from 'path'
 import * as os from 'os'
 import * as fs from 'fs'
 import * as cp from 'child_process'
-import { providers, closedRoots, forceOpenRepository } from '../../src/extension'
+import { providers, openRepository, closeRepository } from '../../src/extension'
 import { TaskChangesProvider } from '../../src/provider'
 
 // ── Repo fixture ──────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ export function removeRepo(repo: Repo): void {
 
 export async function addWorkspaceFolder(root: string): Promise<void> {
   // Clear the ghost guard so addRepo will accept onDidOpenRepository events for this root.
-  closedRoots.delete(root)
+  openRepository?.(root)
   const n = (vscode.workspace.workspaceFolders?.length ?? 0)
   vscode.workspace.updateWorkspaceFolders(n, 0, { uri: vscode.Uri.file(root) })
   // VS Code's workspace-folder-based git auto-detection is unreliable in the test
@@ -69,20 +69,18 @@ export async function addWorkspaceFolder(root: string): Promise<void> {
     await api.openRepository(vscode.Uri.file(root))
     // api.openRepository is idempotent in vscode.git: if the repo was already registered
     // (e.g. a re-add after removeWorkspaceFolder), onDidOpenRepository won't re-fire.
-    // Use the extension's forceOpenRepository hook to trigger addRepo directly.
+    // Fall back to openRepository to trigger addRepo directly.
     if (!providers.has(root)) {
       await sleep(200)
-      if (!providers.has(root)) forceOpenRepository?.(root)
+      if (!providers.has(root)) openRepository?.(root)
     }
   }
 }
 
 export function removeWorkspaceFolder(root: string): void {
-  // Block ghost onDidOpenRepository events and explicitly dispose the provider,
-  // since onDidChangeWorkspaceFolders is not reliable in the test extension host.
-  const p = providers.get(root)
-  if (p) { p.dispose(); providers.delete(root) }
-  closedRoots.add(root)
+  // Explicitly dispose the provider and set the ghost guard, since
+  // onDidChangeWorkspaceFolders is not reliable in the test extension host.
+  closeRepository?.(root)
   const folders = vscode.workspace.workspaceFolders ?? []
   const idx     = folders.findIndex(f => f.uri.fsPath === root)
   if (idx >= 0) vscode.workspace.updateWorkspaceFolders(idx, 1)

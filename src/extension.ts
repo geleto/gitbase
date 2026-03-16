@@ -18,14 +18,22 @@ export const providers = new Map<string, TaskChangesProvider>()
  * by late onDidOpenRepository ghost events.  Cleared when the root is re-opened
  * (via onDidChangeWorkspaceFolders add, or explicit re-registration).
  */
-export const closedRoots = new Set<string>()
+const closedRoots = new Set<string>()
 
 /**
- * Force-open a provider for a repo that is already registered with vscode.git but
- * did not re-fire onDidOpenRepository (because openRepository is idempotent in the
- * git extension when the repo was not closed between calls).  Used by test helpers.
+ * Open (or re-open) a provider for the given repo root.  Clears the ghost guard
+ * so the root is eligible for addRepo, then looks up the repo in the git API and
+ * adds it immediately if already registered.  Set by activate(); undefined before
+ * activation.
  */
-export let forceOpenRepository: ((root: string) => void) | undefined
+export let openRepository: ((root: string) => void) | undefined
+
+/**
+ * Close the provider for the given repo root and add the root to the ghost guard
+ * so late onDidOpenRepository events cannot re-create it.  Set by activate();
+ * undefined before activation.
+ */
+export let closeRepository: ((root: string) => void) | undefined
 
 export let blameController: GitBaseBlameController | undefined
 export let timelineProvider: TaskChangesTimelineProvider | undefined
@@ -63,12 +71,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     if (p) { p.dispose(); providers.delete(root) }
   }
 
-  // Set up the forceOpenRepository hook (used by test helpers for re-open scenarios
-  // where api.openRepository doesn't re-fire onDidOpenRepository).
-  forceOpenRepository = (root: string) => {
+  openRepository = (root: string) => {
+    closedRoots.delete(root)
     const repo = api.repositories.find(r => r.rootUri.fsPath === root)
     if (repo) addRepo(repo)
   }
+  closeRepository = (root: string) => removeRepo(root)
 
   function addRepo(repo: GitRepository): void {
     const root = repo.rootUri.fsPath
