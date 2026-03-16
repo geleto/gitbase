@@ -32,8 +32,8 @@ suite('parseBinarySet', () => {
 
   test('#8 binary rename: old path NOT in set', () => {
     const result = parseBinarySet('-\t-\t\0old.png\0new.png\0')
-    assert.ok(!result.has('old.png'), 'old path must not be in the set')
-    assert.ok(result.has('new.png'), 'new path must be in the set')
+    assert.strictEqual(result.has('old.png'), false, 'old path must not be in the set')
+    assert.strictEqual(result.has('new.png'), true,  'new path must be in the set')
   })
 
   test('#9 dash-prefixed token that is not -\\t-\\t is skipped', () => {

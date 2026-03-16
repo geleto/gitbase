@@ -70,12 +70,12 @@ suite('makeBaseUri / parseBaseUri round-trip', () => {
     assert.strictEqual(r.fp,   'caf\u00e9.ts')
   })
 
-  test('#13 parseBaseUri with malformed query (no & separator) → no crash', () => {
+  test('#13 parseBaseUri with malformed query (no & separator) → treats whole string as root', () => {
     const fakeUri = { query: 'missingampersands' } as any
     const r = parseBaseUri(fakeUri)
-    assert.strictEqual(typeof r.root, 'string')
-    assert.strictEqual(typeof r.ref,  'string')
-    assert.strictEqual(typeof r.fp,   'string')
+    assert.strictEqual(r.root, 'missingampersands')
+    assert.strictEqual(r.ref,  '')
+    assert.strictEqual(r.fp,   '')
   })
 
   test('#14 parseBaseUri with empty query → no crash, all fields empty strings', () => {
