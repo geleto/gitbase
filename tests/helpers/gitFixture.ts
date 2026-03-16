@@ -3,7 +3,7 @@ import * as path from 'path'
 import * as os from 'os'
 import * as fs from 'fs'
 import * as cp from 'child_process'
-import { providers } from '../../src/extension'
+import { providers, closedRoots, forceOpenRepository } from '../../src/extension'
 import { TaskChangesProvider } from '../../src/provider'
 
 // ── Repo fixture ──────────────────────────────────────────────────────────────
@@ -56,24 +56,75 @@ export function removeRepo(repo: Repo): void {
 // ── Workspace folder helpers ──────────────────────────────────────────────────
 
 export async function addWorkspaceFolder(root: string): Promise<void> {
+  // Clear the ghost guard so addRepo will accept onDidOpenRepository events for this root.
+  closedRoots.delete(root)
   const n = (vscode.workspace.workspaceFolders?.length ?? 0)
   vscode.workspace.updateWorkspaceFolders(n, 0, { uri: vscode.Uri.file(root) })
   // VS Code's workspace-folder-based git auto-detection is unreliable in the test
   // extension host (onDidOpenRepository may never fire via that path).  Explicitly
-  // opening the repository via the git API is a supported production pattern and
-  // guarantees onDidOpenRepository fires synchronously before this Promise resolves,
-  // so providers.has(root) is true when addWorkspaceFolder returns.
+  // opening the repository via the git API guarantees onDidOpenRepository fires.
   const gitExt = vscode.extensions.getExtension<any>('vscode.git')
   if (gitExt?.isActive) {
     const api = gitExt.exports.getAPI(1)
     await api.openRepository(vscode.Uri.file(root))
+    // api.openRepository is idempotent in vscode.git: if the repo was already registered
+    // (e.g. a re-add after removeWorkspaceFolder), onDidOpenRepository won't re-fire.
+    // Use the extension's forceOpenRepository hook to trigger addRepo directly.
+    if (!providers.has(root)) {
+      await sleep(200)
+      if (!providers.has(root)) forceOpenRepository?.(root)
+    }
   }
 }
 
 export function removeWorkspaceFolder(root: string): void {
+  // Block ghost onDidOpenRepository events and explicitly dispose the provider,
+  // since onDidChangeWorkspaceFolders is not reliable in the test extension host.
+  const p = providers.get(root)
+  if (p) { p.dispose(); providers.delete(root) }
+  closedRoots.add(root)
   const folders = vscode.workspace.workspaceFolders ?? []
   const idx     = folders.findIndex(f => f.uri.fsPath === root)
   if (idx >= 0) vscode.workspace.updateWorkspaceFolders(idx, 1)
+}
+
+// ── Provider base helpers ─────────────────────────────────────────────────────
+
+type BaseType = 'Branch' | 'Tag' | 'Commit' | 'PR'
+
+/**
+ * Set the base ref on a provider, bypassing TypeScript's private field access.
+ * label defaults to ref when omitted.
+ * autoDetectDone is set to true for any typed base so auto-detection does not
+ * re-run on the next refresh.
+ */
+export function setProviderBase(
+  provider: TaskChangesProvider,
+  ref: string,
+  type: BaseType | undefined,
+  label = ref,
+): void {
+  const p = provider as any
+  p.baseRef   = ref
+  p.baseLabel = label
+  p.baseType  = type
+  if (type !== undefined) p.autoDetectDone = true
+  p.syncLabel()
+}
+
+/** Read the current base ref from a provider. */
+export function getProviderBase(provider: TaskChangesProvider): string {
+  return (provider as any).baseRef as string
+}
+
+/** Read the lastDiffRef computed by the most recent refresh. */
+export function getProviderDiffRef(provider: TaskChangesProvider): string {
+  return (provider as any).lastDiffRef as string
+}
+
+/** Read the autoDetectDone flag from a provider. */
+export function getProviderAutoDetectDone(provider: TaskChangesProvider): boolean {
+  return (provider as any).autoDetectDone as boolean
 }
 
 // ── Provider access ───────────────────────────────────────────────────────────

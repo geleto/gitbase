@@ -13,6 +13,20 @@ import { TaskChangesTimelineProvider } from './timelineProvider'
 
 export const providers = new Map<string, TaskChangesProvider>()
 
+/**
+ * Roots whose providers have been explicitly closed and should not be re-created
+ * by late onDidOpenRepository ghost events.  Cleared when the root is re-opened
+ * (via onDidChangeWorkspaceFolders add, or explicit re-registration).
+ */
+export const closedRoots = new Set<string>()
+
+/**
+ * Force-open a provider for a repo that is already registered with vscode.git but
+ * did not re-fire onDidOpenRepository (because openRepository is idempotent in the
+ * git extension when the repo was not closed between calls).  Used by test helpers.
+ */
+export let forceOpenRepository: ((root: string) => void) | undefined
+
 export let blameController: GitBaseBlameController | undefined
 export let timelineProvider: TaskChangesTimelineProvider | undefined
 
@@ -44,28 +58,30 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   )
 
   function removeRepo(root: string): void {
+    closedRoots.add(root)
     const p = providers.get(root)
     if (p) { p.dispose(); providers.delete(root) }
+  }
+
+  // Set up the forceOpenRepository hook (used by test helpers for re-open scenarios
+  // where api.openRepository doesn't re-fire onDidOpenRepository).
+  forceOpenRepository = (root: string) => {
+    const repo = api.repositories.find(r => r.rootUri.fsPath === root)
+    if (repo) addRepo(repo)
   }
 
   function addRepo(repo: GitRepository): void {
     const root = repo.rootUri.fsPath
     if (providers.has(root)) return
-    // Guard against late onDidOpenRepository events fired by VS Code's async workspace-folder
-    // auto-detection for a folder that has already been removed.  A repo is only valid if its
-    // root is at or beneath one of the current workspace folders.
-    const inWorkspace = vscode.workspace.workspaceFolders?.some(f =>
-      root === f.uri.fsPath || root.startsWith(f.uri.fsPath + nodePath.sep)
-    ) ?? false
-    if (!inWorkspace) return
+    // Guard against ghost onDidOpenRepository events that fire after a workspace folder
+    // has been removed.  closedRoots is cleared when the root is re-opened.
+    if (closedRoots.has(root)) return
     const p = new TaskChangesProvider(repo, ctx, content, decoProvider)
     providers.set(root, p)
     ctx.subscriptions.push(p)
-    // Re-evaluate the Explorer/editor context key whenever this provider's files change
     ctx.subscriptions.push(p.onDidChangeResourceStates(() =>
       updateActiveEditorContext(vscode.window.activeTextEditor)
     ))
-    // Refresh the Timeline panel when this repo's base changes
     ctx.subscriptions.push(p.onDidChangeBase(() => timelineProvider?.fireChanged()))
   }
 
@@ -106,6 +122,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // does not happen automatically on workspace folder removal for API-opened repos.
   ctx.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(e => {
+      // Re-open: clear ghost guard so addRepo will accept the root again
+      for (const f of e.added) closedRoots.delete(f.uri.fsPath)
+      // Close: removeRepo sets closedRoots + disposes provider
       for (const folder of e.removed) removeRepo(folder.uri.fsPath)
       updateActiveEditorContext(vscode.window.activeTextEditor)
     })
