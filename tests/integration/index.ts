@@ -1,5 +1,6 @@
 import * as path from 'path'
 import * as fs   from 'fs'
+import * as vscode from 'vscode'
 import Mocha from 'mocha'
 
 function findTestFiles(dir: string, results: string[] = []): string[] {
@@ -43,6 +44,9 @@ export async function run(): Promise<void> {
     return
   }
 
+  const out = vscode.window.createOutputChannel('GitBase Tests')
+  out.show(true)
+
   const mocha     = new Mocha({ ui: 'tdd', color: true, timeout: 60_000 })
   const testsRoot = path.resolve(__dirname)
 
@@ -52,10 +56,26 @@ export async function run(): Promise<void> {
 
   return new Promise((resolve, reject) => {
     try {
-      mocha.run(failures => {
+      const runner = mocha.run(failures => {
         releaseLock()
         if (failures > 0) reject(new Error(`${failures} test(s) failed.`))
         else resolve()
+      })
+
+      const { EVENT_SUITE_BEGIN, EVENT_TEST_PASS, EVENT_TEST_FAIL, EVENT_RUN_END } = Mocha.Runner.constants
+      runner.on(EVENT_SUITE_BEGIN, (suite: Mocha.Suite) => {
+        if (suite.title) out.appendLine(`\n${suite.title}`)
+      })
+      runner.on(EVENT_TEST_PASS, (test: Mocha.Test) => {
+        out.appendLine(`  ✓ ${test.title}`)
+      })
+      runner.on(EVENT_TEST_FAIL, (test: Mocha.Test, err: Error) => {
+        out.appendLine(`  ✗ ${test.title}`)
+        out.appendLine(`    ${err.message}`)
+      })
+      runner.on(EVENT_RUN_END, () => {
+        const { passes, failures: f } = runner.stats!
+        out.appendLine(`\n${passes} passing, ${f} failing`)
       })
     } catch (err) {
       releaseLock()
