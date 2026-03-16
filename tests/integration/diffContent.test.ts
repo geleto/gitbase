@@ -5,6 +5,7 @@ import { makeBaseUri, parseBaseUri, EMPTY_URI, EmptyContentProvider } from '../.
 import {
   makeRepo, removeRepo, addWorkspaceFolder, removeWorkspaceFolder,
   waitForProvider, waitForResourceStates, waitForRefresh, ensureExtensionActive,
+  setProviderBase, getProviderBase,
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
@@ -32,11 +33,7 @@ suite('§3.4 Diff Content Correctness', () => {
     await addWorkspaceFolder(repo.root)
     provider = await waitForProvider(repo.root, 10_000)
 
-    ;(provider as any).baseRef   = 'main'
-    ;(provider as any).baseLabel = 'main'
-    ;(provider as any).baseType  = 'Branch'
-    ;(provider as any).autoDetectDone = true
-    ;(provider as any).syncLabel()
+    setProviderBase(provider, 'main', 'Branch')
     provider.schedule()
     await waitForRefresh(provider, 5_000)
   })
@@ -84,13 +81,13 @@ suite('§3.4 Diff Content Correctness', () => {
   })
 
   test('#9 provideOriginalResource returns undefined when base = HEAD', () => {
-    const savedRef  = (provider as any).baseRef
-    ;(provider as any).baseRef = 'HEAD'
+    const savedRef = getProviderBase(provider)
+    setProviderBase(provider, 'HEAD', undefined)
 
     const uri    = vscode.Uri.file(path.join(repo.root, 'hello.ts'))
     const result = provider.provideOriginalResource(uri)
 
-    ;(provider as any).baseRef = savedRef
+    setProviderBase(provider, savedRef, 'Branch')
     assert.strictEqual(result, undefined)
   })
 

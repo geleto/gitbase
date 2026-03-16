@@ -2,7 +2,7 @@ import * as assert from 'assert'
 import * as vscode from 'vscode'
 import {
   makeRepo, removeRepo, addWorkspaceFolder, removeWorkspaceFolder,
-  waitForProvider, ensureExtensionActive, sleep,
+  waitForProvider, ensureExtensionActive, sleep, setProviderBase,
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
@@ -29,15 +29,8 @@ suite('§3.6 Status Bar', () => {
     removeRepo(repo)
   })
 
-  function setBase(ref: string, label: string, type: 'Branch' | 'Tag' | 'Commit' | 'PR' | undefined): void {
-    ;(provider as any).baseRef   = ref
-    ;(provider as any).baseLabel = label
-    ;(provider as any).baseType  = type
-    ;(provider as any).syncLabel()
-  }
-
   test('#1 No base selected → status bar text contains "Select base"', () => {
-    setBase('HEAD', 'HEAD', undefined)
+    setProviderBase(provider, 'HEAD', undefined)
     assert.ok(
       provider.statusBarItem.text.includes('Select base'),
       `Expected "Select base" in "${provider.statusBarItem.text}"`,
@@ -45,14 +38,14 @@ suite('§3.6 Status Bar', () => {
   })
 
   test('#2 Branch base → text contains branch name with git-branch icon', () => {
-    setBase('origin/main', 'origin/main', 'Branch')
+    setProviderBase(provider, 'origin/main', 'Branch')
     const text = provider.statusBarItem.text
     assert.ok(text.includes('origin/main'), `Expected "origin/main" in "${text}"`)
     assert.ok(text.includes('$(git-branch)'), `Expected git-branch icon in "${text}"`)
   })
 
   test('#3 Tag base → text contains tag name with tag icon', () => {
-    setBase('abc1234567890123456789012345678901234567', 'v1.0', 'Tag')
+    setProviderBase(provider, 'abc1234567890123456789012345678901234567', 'Tag', 'v1.0')
     const text = provider.statusBarItem.text
     assert.ok(text.includes('v1.0'), `Expected "v1.0" in "${text}"`)
     assert.ok(text.includes('$(tag)'), `Expected tag icon in "${text}"`)
@@ -60,21 +53,21 @@ suite('§3.6 Status Bar', () => {
 
   test('#4 Commit base → text contains commit hash with commit icon', () => {
     const sha = 'a'.repeat(40)
-    setBase(sha, sha, 'Commit')
+    setProviderBase(provider, sha, 'Commit')
     const text = provider.statusBarItem.text
     assert.ok(text.includes('$(git-commit)'), `Expected git-commit icon in "${text}"`)
   })
 
   test('#5 Long label (>30 chars) → truncated with ellipsis', () => {
     const longLabel = 'a'.repeat(35)
-    setBase('feature/long-branch', longLabel, 'Branch')
+    setProviderBase(provider, 'feature/long-branch', 'Branch', longLabel)
     const text = provider.statusBarItem.text
     assert.ok(text.includes('…'), `Expected ellipsis in "${text}"`)
     assert.ok(!text.includes(longLabel), 'Label should be truncated')
   })
 
   test('#6 PR base → text uses github icon and PR number', () => {
-    setBase('pr-head', 'GitHub PR #42', 'PR')
+    setProviderBase(provider, 'pr-head', 'PR', 'GitHub PR #42')
     const text = provider.statusBarItem.text
     assert.ok(text.includes('$(github)'), `Expected github icon in "${text}"`)
     assert.ok(text.includes('PR #42'), `Expected "PR #42" in "${text}"`)
@@ -98,7 +91,7 @@ suite('§3.6 Status Bar', () => {
   })
 
   test('#9 Label that does not match PR #N → shown without github icon', () => {
-    setBase('feature/x', 'feature/x', 'PR')
+    setProviderBase(provider, 'feature/x', 'PR')
     const text = provider.statusBarItem.text
     // PR type with non-matching label falls back to truncated label
     assert.ok(text.includes('$(github)'), 'Still shows github icon for PR type')

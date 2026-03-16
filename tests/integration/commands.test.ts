@@ -4,7 +4,7 @@ import * as path from 'path'
 import {
   makeRepo, removeRepo, addWorkspaceFolder, removeWorkspaceFolder,
   waitForProvider, waitForResourceStates, waitForRefresh, waitForClipboard,
-  captureNotifications, spyCommand, ensureExtensionActive,
+  captureNotifications, spyCommand, ensureExtensionActive, setProviderBase,
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
@@ -27,10 +27,7 @@ suite('§3.3 File Action Commands', () => {
     await addWorkspaceFolder(repo.root)
     provider = await waitForProvider(repo.root, 10_000)
 
-    ;(provider as any).baseRef   = 'main'
-    ;(provider as any).baseLabel = 'main'
-    ;(provider as any).baseType  = 'Branch'
-    ;(provider as any).syncLabel()
+    setProviderBase(provider, 'main', 'Branch')
   })
 
   suiteTeardown(() => {

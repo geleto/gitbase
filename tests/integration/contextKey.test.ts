@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 import * as path from 'path'
 import {
   makeRepo, removeRepo, addWorkspaceFolder, removeWorkspaceFolder,
-  waitForProvider, waitForResourceStates, ensureExtensionActive, sleep,
+  waitForProvider, waitForResourceStates, ensureExtensionActive, sleep, setProviderBase,
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
@@ -26,11 +26,7 @@ suite('§3.7 Context Key (Explorer/Editor Menus)', () => {
     provider = await waitForProvider(repo.root, 10_000)
 
     // Set base to main
-    ;(provider as any).baseRef   = 'main'
-    ;(provider as any).baseLabel = 'main'
-    ;(provider as any).baseType  = 'Branch'
-    ;(provider as any).autoDetectDone = true
-    ;(provider as any).syncLabel()
+    setProviderBase(provider, 'main', 'Branch')
   })
 
   suiteTeardown(() => {

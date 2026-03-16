@@ -4,6 +4,7 @@ import * as cp from 'child_process'
 import {
   makeRepo, removeRepo, addWorkspaceFolder, removeWorkspaceFolder,
   waitForProvider, waitForResourceStates, waitForRefresh, ensureExtensionActive,
+  setProviderBase, getProviderDiffRef,
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
@@ -34,10 +35,7 @@ suite('§3.2 Resource State Accuracy', () => {
     await (provider as any).ctx.workspaceState.update(`taskChanges.base.${repo.root}`,      'main')
     await (provider as any).ctx.workspaceState.update(`taskChanges.baseLabel.${repo.root}`, 'main')
     await (provider as any).ctx.workspaceState.update(`taskChanges.baseType.${repo.root}`,  'Branch')
-    ;(provider as any).baseRef   = 'main'
-    ;(provider as any).baseLabel = 'main'
-    ;(provider as any).baseType  = 'Branch'
-    ;(provider as any).syncLabel()
+    setProviderBase(provider, 'main', 'Branch')
     provider.schedule()
 
     await waitForRefresh(provider, 5_000)
@@ -112,27 +110,25 @@ suite('§3.2 Resource State Accuracy', () => {
       provider.schedule()
       await waitForRefresh(provider, 3_000)
 
-      const diffRef = (provider as any).lastDiffRef as string
+      const diffRef = getProviderDiffRef(provider)
       // For branch base, diffRef should be a full SHA (40 hex chars) or the branch name
       assert.ok(diffRef, 'lastDiffRef should be set')
     })
 
     test('#10 HEAD base → lastDiffRef is HEAD', async () => {
       // Temporarily switch to HEAD base
-      ;(provider as any).baseRef  = 'HEAD'
-      ;(provider as any).baseType = undefined
+      setProviderBase(provider, 'HEAD', undefined)
       provider.schedule()
       // Wait until the refresh actually completes and sets lastDiffRef to 'HEAD'.
       // () => true would return immediately without waiting for the scheduled run.
-      await waitForResourceStates(provider, _s => (provider as any).lastDiffRef === 'HEAD', 3_000)
+      await waitForResourceStates(provider, _s => getProviderDiffRef(provider) === 'HEAD', 3_000)
 
-      assert.strictEqual((provider as any).lastDiffRef, 'HEAD')
+      assert.strictEqual(getProviderDiffRef(provider), 'HEAD')
 
       // Restore
-      ;(provider as any).baseRef  = 'main'
-      ;(provider as any).baseType = 'Branch'
+      setProviderBase(provider, 'main', 'Branch')
       provider.schedule()
-      await waitForResourceStates(provider, _s => (provider as any).lastDiffRef !== 'HEAD', 3_000)
+      await waitForResourceStates(provider, _s => getProviderDiffRef(provider) !== 'HEAD', 3_000)
     })
   })
 

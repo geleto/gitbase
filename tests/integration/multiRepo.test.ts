@@ -5,7 +5,7 @@ import { providers } from '../../src/extension'
 import {
   makeRepo, removeRepo, addWorkspaceFolder, removeWorkspaceFolder,
   waitForProvider, waitForProviderCount, waitForResourceStates, waitForRefresh,
-  ensureExtensionActive, sleep,
+  ensureExtensionActive, sleep, setProviderBase, getProviderBase,
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
@@ -56,12 +56,9 @@ suite('§3.8 Multi-Repo', () => {
     })
 
     test('#3 Setting base on repo A does not affect repo B', async () => {
-      ;(provA as any).baseRef   = 'HEAD~1'
-      ;(provA as any).baseLabel = 'HEAD~1'
-      ;(provA as any).baseType  = 'Commit'
-      ;(provA as any).syncLabel()
+      setProviderBase(provA, 'HEAD~1', 'Commit')
 
-      assert.notStrictEqual((provA as any).baseRef, (provB as any).baseRef)
+      assert.notStrictEqual(getProviderBase(provA), getProviderBase(provB))
     })
 
     test('#4 Repo A resource states independent of repo B', async () => {
@@ -90,9 +87,7 @@ suite('§3.8 Multi-Repo', () => {
     test('#10 copyRelativePath for file in repo B → path relative to repo B root', async () => {
       repoB.write('b.ts', 'modified in B\n')
 
-      ;(provB as any).baseRef   = 'HEAD'
-      ;(provB as any).baseType  = undefined
-      ;(provB as any).syncLabel()
+      setProviderBase(provB, 'HEAD', undefined)
       provB.schedule()
       await waitForRefresh(provB, 3_000)
 
@@ -100,11 +95,7 @@ suite('§3.8 Multi-Repo', () => {
       // Let's make a committed change and add a branch base
       repoB.git('branch -M main')
       repoB.git('checkout -b feature-b')
-      ;(provB as any).baseRef   = 'main'
-      ;(provB as any).baseLabel = 'main'
-      ;(provB as any).baseType  = 'Branch'
-      ;(provB as any).autoDetectDone = true
-      ;(provB as any).syncLabel()
+      setProviderBase(provB, 'main', 'Branch')
       provB.schedule()
       await waitForRefresh(provB, 3_000)
 

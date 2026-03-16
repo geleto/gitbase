@@ -4,6 +4,7 @@ import {
   makeRepo, removeRepo, addWorkspaceFolder, removeWorkspaceFolder,
   waitForProvider, waitForResourceStates, captureNotifications,
   ensureExtensionActive, sleep,
+  setProviderBase, getProviderBase, getProviderAutoDetectDone,
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
@@ -34,9 +35,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
     })
 
     test('#1 Select Branch base → stored in workspaceState', async () => {
-      ;(provider as any).baseRef   = 'main'
-      ;(provider as any).baseLabel = 'main'
-      ;(provider as any).baseType  = 'Branch'
+      setProviderBase(provider, 'main', 'Branch')
       await (provider as any).ctx.workspaceState.update(`taskChanges.base.${repo.root}`,      'main')
       await (provider as any).ctx.workspaceState.update(`taskChanges.baseType.${repo.root}`,  'Branch')
 
@@ -92,7 +91,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
       // Wait a bit for auto-detection to run
       await sleep(2000)
 
-      const baseRef = (p as any).baseRef as string
+      const baseRef = getProviderBase(p)
       // Without remote it might stay HEAD or detect nothing
       // The group label should either be the placeholder or a detected branch
       const label = p.group.label
@@ -117,10 +116,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
       const p = await waitForProvider(repo.root, 10_000)
 
       // Set base to temp-base
-      ;(p as any).baseRef   = 'temp-base'
-      ;(p as any).baseLabel = 'temp-base'
-      ;(p as any).baseType  = 'Branch'
-      ;(p as any).syncLabel()
+      setProviderBase(p, 'temp-base', 'Branch')
 
       // Delete the branch
       repo.git('branch -D temp-base')
@@ -133,7 +129,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
         // baseRef directly, since the 400ms debounce + potential dirty-retry can
         // push the notification past a fixed sleep.
         const deadline = Date.now() + 8_000
-        while (Date.now() < deadline && (p as any).baseRef === 'temp-base') {
+        while (Date.now() < deadline && getProviderBase(p) === 'temp-base') {
           await sleep(200)
         }
         // Allow the async workspaceState.update + showXxx calls inside run() to settle.
@@ -144,7 +140,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
       const recovered = notes.some(n => n.severity === 'info' && n.message.includes('auto-recovered'))
       const warned    = notes.some(n => n.severity === 'warning' && n.message.includes('no longer exists'))
 
-      assert.ok(recovered || warned || (p as any).baseRef !== 'temp-base',
+      assert.ok(recovered || warned || getProviderBase(p) !== 'temp-base',
         'Base should be cleared when ref deleted')
 
       removeWorkspaceFolder(repo.root)
@@ -160,8 +156,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
       await addWorkspaceFolder(repo.root)
       const p = await waitForProvider(repo.root, 10_000)
 
-      ;(p as any).baseRef = 'HEAD'
-      ;(p as any).baseType = undefined
+      setProviderBase(p, 'HEAD', undefined)
 
       const uri    = vscode.Uri.file(repo.root + '/f.ts')
       const result = p.provideOriginalResource(uri)
@@ -189,7 +184,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
 
       // run() always sets autoDetectDone = true on its first execution (line 151 of provider.ts),
       // regardless of whether detection succeeds or fails.
-      assert.strictEqual((p as any).autoDetectDone, true,
+      assert.strictEqual(getProviderAutoDetectDone(p), true,
         'autoDetectDone should be true after first run')
 
       removeWorkspaceFolder(repo.root)
