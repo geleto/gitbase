@@ -12,6 +12,34 @@
         "${workspaceFolder}/out/**/*.js"
       ],
       "preLaunchTask": "npm: compile"
+    },
+    {
+      "name": "Unit Tests",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/node_modules/mocha/bin/mocha.js",
+      "args": [
+        "--require", "out/tests/unit/setup.js",
+        "--ui", "tdd",
+        "--timeout", "10000",
+        "out/tests/unit/**/*.test.js"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.js"
+      ],
+      "preLaunchTask": "npm: compile"
+    },
+    {
+      "name": "Integration Tests (debug)",
+      "type": "node",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "env": { "NODE_OPTIONS": "" },
+      "program": "${workspaceFolder}/out/tests/integration/runTests.js",
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.js"
+      ],
+      "preLaunchTask": "compile"
     }
   ]
 }

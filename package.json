@@ -1,11 +1,18 @@
 {
   "name": "gitbase",
+  "publisher": "gitbase",
   "displayName": "Task Changes",
   "description": "SCM view showing working-tree changes relative to a selected branch, commit, or tag",
   "version": "0.0.1",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["SCM Providers"],
-  "activationEvents": ["workspaceContains:.git"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "activationEvents": [
+    "workspaceContains:.git"
+  ],
   "icon": "images/logo.png",
   "main": "./out/src/extension",
   "contributes": {
@@ -124,12 +131,14 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test:unit": "mocha --require out/tests/unit/setup.js --ui tdd --timeout 10000 'out/tests/unit/**/*.test.js'"
+    "test:unit": "mocha --require out/tests/unit/setup.js --ui tdd --timeout 10000 'out/tests/unit/**/*.test.js'",
+    "test:integration": "node out/tests/integration/runTests.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
-    "@types/node": "^20.0.0",
     "@types/mocha": "^10.0.0",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.5.2",
     "mocha": "^10.0.0",
     "typescript": "^5.3.0"
   }
