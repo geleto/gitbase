@@ -43,9 +43,21 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     timelineProvider,
   )
 
+  function removeRepo(root: string): void {
+    const p = providers.get(root)
+    if (p) { p.dispose(); providers.delete(root) }
+  }
+
   function addRepo(repo: GitRepository): void {
     const root = repo.rootUri.fsPath
     if (providers.has(root)) return
+    // Guard against late onDidOpenRepository events fired by VS Code's async workspace-folder
+    // auto-detection for a folder that has already been removed.  A repo is only valid if its
+    // root is at or beneath one of the current workspace folders.
+    const inWorkspace = vscode.workspace.workspaceFolders?.some(f =>
+      root === f.uri.fsPath || root.startsWith(f.uri.fsPath + nodePath.sep)
+    ) ?? false
+    if (!inWorkspace) return
     const p = new TaskChangesProvider(repo, ctx, content, decoProvider)
     providers.set(root, p)
     ctx.subscriptions.push(p)
@@ -88,10 +100,21 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       if (state === 'initialized') { api.repositories.forEach(addRepo); updateActiveEditorContext(vscode.window.activeTextEditor) }
     }))
   }
+  // Primary cleanup: dispose providers when their workspace folder is removed.
+  // onDidCloseRepository is NOT reliable for repos opened via api.openRepository —
+  // the git extension only fires it when it decides to close the repo itself, which
+  // does not happen automatically on workspace folder removal for API-opened repos.
+  ctx.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(e => {
+      for (const folder of e.removed) removeRepo(folder.uri.fsPath)
+      updateActiveEditorContext(vscode.window.activeTextEditor)
+    })
+  )
+  // Secondary cleanup: handles repos closed by the git extension itself (e.g. on
+  // extension reload or when vscode.git independently decides to close a repository).
   ctx.subscriptions.push(
     api.onDidCloseRepository(repo => {
-      const p = providers.get(repo.rootUri.fsPath)
-      if (p) { p.dispose(); providers.delete(repo.rootUri.fsPath) }
+      removeRepo(repo.rootUri.fsPath)
       updateActiveEditorContext(vscode.window.activeTextEditor)
     })
   )
