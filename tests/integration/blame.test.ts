@@ -7,7 +7,7 @@ import {
   waitForProvider, ensureExtensionActive, sleep,
 } from '../helpers/gitFixture'
 
-suite('§3.9 Git Blame Decorations', () => {
+suite('Git Blame Decorations', () => {
   let repo: ReturnType<typeof makeRepo>
   let commitSha: string
 
@@ -31,12 +31,12 @@ suite('§3.9 Git Blame Decorations', () => {
     removeRepo(repo)
   })
 
-  test('#1 Open basegit: editor → blame controller exists', async () => {
+  test('Open basegit: editor → blame controller exists', async () => {
     assert.ok(blameController, 'blameController should be exported and non-null')
     assert.ok(blameController!.decorationType, 'decorationType getter should work')
   })
 
-  test('#8 Switch from basegit: to file: editor → previous decorations cleared', async () => {
+  test('Switch from basegit: to file: editor → previous decorations cleared', async () => {
     // Open a basegit: document
     const basegitUri = makeBaseUri(repo.root, commitSha, 'blame.ts')
     await vscode.workspace.openTextDocument(basegitUri)
@@ -51,7 +51,7 @@ suite('§3.9 Git Blame Decorations', () => {
     assert.ok(blameController!.decorationType, 'decorationType should still be accessible')
   })
 
-  test('#12 git blame for non-blame-able file → no crash', async () => {
+  test('git blame for non-blame-able file → no crash', async () => {
     // Empty file — git blame on it should either return null or empty
     repo.write('empty.ts', '')
     repo.git('add empty.ts')
@@ -69,7 +69,7 @@ suite('§3.9 Git Blame Decorations', () => {
     }
   })
 
-  test('#14 file: URI editor → no blame decorations applied', async () => {
+  test('file: URI editor → no blame decorations applied', async () => {
     const fileUri = vscode.Uri.file(repo.root + '/blame.ts')
     const editor  = await vscode.window.showTextDocument(fileUri)
     await sleep(500)
@@ -79,7 +79,7 @@ suite('§3.9 Git Blame Decorations', () => {
     assert.strictEqual(editor.document.uri.scheme, 'file')
   })
 
-  test('#15 Dispose → decoration type disposed gracefully', () => {
+  test('Dispose → decoration type disposed gracefully', () => {
     // blameController.dispose() is called on extension deactivation.
     // We just verify that decorationType is accessible without throwing before disposal.
     const dt = blameController?.decorationType

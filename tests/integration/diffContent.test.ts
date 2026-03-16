@@ -9,7 +9,7 @@ import {
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
-suite('§3.4 Diff Content Correctness', () => {
+suite('Diff Content Correctness', () => {
   let provider: TaskChangesProvider
   let repo: ReturnType<typeof makeRepo>
   let baseCommitSha: string
@@ -44,7 +44,7 @@ suite('§3.4 Diff Content Correctness', () => {
     removeRepo(repo)
   })
 
-  test('#1 provideTextDocumentContent for M file matches git show', async () => {
+  test('provideTextDocumentContent for M file matches git show', async () => {
     const fp  = 'hello.ts'
     const uri = makeBaseUri(repo.root, baseCommitSha, fp)
 
@@ -55,7 +55,7 @@ suite('§3.4 Diff Content Correctness', () => {
     assert.ok(!content.includes('world'), `Expected base content NOT to contain "world"`)
   })
 
-  test('#4 File that did not exist at ref → placeholder message', async () => {
+  test('File that did not exist at ref → placeholder message', async () => {
     const fp  = 'nonexistent.ts'
     const uri = makeBaseUri(repo.root, baseCommitSha, fp)
 
@@ -68,19 +68,19 @@ suite('§3.4 Diff Content Correctness', () => {
     )
   })
 
-  test('#7b EmptyContentProvider returns empty string', async () => {
+  test('EmptyContentProvider returns empty string', async () => {
     const emptyProvider = new EmptyContentProvider()
     const content = emptyProvider.provideTextDocumentContent()
     assert.strictEqual(content, '')
   })
 
-  test('#8 provideOriginalResource returns undefined for non-file URI', () => {
+  test('provideOriginalResource returns undefined for non-file URI', () => {
     const uri    = vscode.Uri.parse('git:/some/path')
     const result = provider.provideOriginalResource(uri)
     assert.strictEqual(result, undefined)
   })
 
-  test('#9 provideOriginalResource returns undefined when base = HEAD', () => {
+  test('provideOriginalResource returns undefined when base = HEAD', () => {
     const savedRef = getProviderBase(provider)
     setProviderBase(provider, 'HEAD', undefined)
 
@@ -91,7 +91,7 @@ suite('§3.4 Diff Content Correctness', () => {
     assert.strictEqual(result, undefined)
   })
 
-  test('#10 provideOriginalResource returns basegit: URI for M file', async () => {
+  test('provideOriginalResource returns basegit: URI for M file', async () => {
     provider.schedule()
     await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'M'), 5_000)
 
@@ -106,7 +106,7 @@ suite('§3.4 Diff Content Correctness', () => {
     assert.strictEqual(fp, 'hello.ts')
   })
 
-  test('#11 provideOriginalResource returns undefined for U files', async () => {
+  test('provideOriginalResource returns undefined for U files', async () => {
     // Write an untracked file
     repo.write('untracked.ts', 'u\n')
     provider.schedule()
@@ -117,7 +117,7 @@ suite('§3.4 Diff Content Correctness', () => {
     assert.strictEqual(result, undefined, 'U files should not have an original resource')
   })
 
-  test('#11b provideOriginalResource returns undefined for D files', async () => {
+  test('provideOriginalResource returns undefined for D files', async () => {
     // hello.ts exists on main — deleting it on the feature branch shows as D relative to main
     repo.git('rm hello.ts')
     provider.schedule()
@@ -128,7 +128,7 @@ suite('§3.4 Diff Content Correctness', () => {
     assert.strictEqual(result, undefined, 'D files should not have an original resource for QuickDiff')
   })
 
-  test('#12 provideOriginalResource returns undefined for file outside repo', () => {
+  test('provideOriginalResource returns undefined for file outside repo', () => {
     const uri    = vscode.Uri.file('/some/other/path/file.ts')
     const result = provider.provideOriginalResource(uri)
     assert.strictEqual(result, undefined)

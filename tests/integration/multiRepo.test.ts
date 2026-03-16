@@ -9,7 +9,7 @@ import {
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
-suite('§3.8 Multi-Repo', () => {
+suite('Multi-Repo', () => {
   let repoA: ReturnType<typeof makeRepo>
   let repoB: ReturnType<typeof makeRepo>
   let provA: TaskChangesProvider
@@ -44,24 +44,24 @@ suite('§3.8 Multi-Repo', () => {
   })
 
   suite('Provider isolation', () => {
-    test('#1 Two workspace folders → two providers added', () => {
+    test('Two workspace folders → two providers added', () => {
       assert.ok(providers.has(repoA.root), 'Provider A should exist')
       assert.ok(providers.has(repoB.root), 'Provider B should exist')
     })
 
-    test('#2 Each provider has its own SCM instance with different rootUri', () => {
+    test('Each provider has its own SCM instance with different rootUri', () => {
       assert.notStrictEqual(provA.scm.rootUri?.fsPath, provB.scm.rootUri?.fsPath)
       assert.strictEqual(provA.scm.rootUri?.fsPath, repoA.root)
       assert.strictEqual(provB.scm.rootUri?.fsPath, repoB.root)
     })
 
-    test('#3 Setting base on repo A does not affect repo B', async () => {
+    test('Setting base on repo A does not affect repo B', async () => {
       setProviderBase(provA, 'HEAD~1', 'Commit')
 
       assert.notStrictEqual(getProviderBase(provA), getProviderBase(provB))
     })
 
-    test('#4 Repo A resource states independent of repo B', async () => {
+    test('Repo A resource states independent of repo B', async () => {
       repoA.write('a.ts', 'modified in A\n')
       provA.schedule()
       await waitForRefresh(provA, 3_000)
@@ -76,7 +76,7 @@ suite('§3.8 Multi-Repo', () => {
   })
 
   suite('resolveProviderForResource', () => {
-    test('#9 File not in any repo → resolves to undefined (tested via copyPatch)', async () => {
+    test('File not in any repo → resolves to undefined (tested via copyPatch)', async () => {
       const uri = vscode.Uri.file('/some/completely/other/path/file.ts')
       // taskChanges.openDiff on an untracked path should be a no-op
       await vscode.commands.executeCommand('taskChanges.openDiff', uri)
@@ -84,7 +84,7 @@ suite('§3.8 Multi-Repo', () => {
       assert.ok(true)
     })
 
-    test('#10 copyRelativePath for file in repo B → path relative to repo B root', async () => {
+    test('copyRelativePath for file in repo B → path relative to repo B root', async () => {
       repoB.write('b.ts', 'modified in B\n')
 
       setProviderBase(provB, 'HEAD', undefined)
@@ -116,7 +116,7 @@ suite('§3.8 Multi-Repo', () => {
   })
 
   suite('Repo picker', () => {
-    test('#12 selectBase with 1 repo open → no repo picker', async () => {
+    test('selectBase with 1 repo open → no repo picker', async () => {
       // When there's exactly one provider, resolveProvider skips the quick pick.
       // We can't assert on the picker directly, but if only one provider is in providers,
       // the function returns without showing a picker.
@@ -126,7 +126,7 @@ suite('§3.8 Multi-Repo', () => {
   })
 
   suite('Repo close and badge cleanup', () => {
-    test('#17 Remove repo from workspace → provider disposed', async () => {
+    test('Remove repo from workspace → provider disposed', async () => {
       const repoC = makeRepo('gitbase-mr-c-')
       repoC.write('c.ts', 'c\n')
       repoC.git('add .')
@@ -144,7 +144,7 @@ suite('§3.8 Multi-Repo', () => {
       removeRepo(repoC)
     })
 
-    test('#19 Re-adding same repo starts fresh', async () => {
+    test('Re-adding same repo starts fresh', async () => {
       const repoD = makeRepo('gitbase-mr-d-')
       repoD.write('d.ts', 'd\n')
       repoD.git('add .')

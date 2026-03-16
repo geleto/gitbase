@@ -8,7 +8,7 @@ import {
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
-suite('§3.3 File Action Commands', () => {
+suite('File Action Commands', () => {
   let provider: TaskChangesProvider
   let repo: ReturnType<typeof makeRepo>
 
@@ -44,7 +44,7 @@ suite('§3.3 File Action Commands', () => {
   }
 
   suite('taskChanges.copyPath', () => {
-    test('#1 M file → absolute path copied to clipboard', async () => {
+    test('M file → absolute path copied to clipboard', async () => {
       repo.write('src/file.ts', 'modified\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'M'), 5_000)
@@ -56,7 +56,7 @@ suite('§3.3 File Action Commands', () => {
       assert.ok(text.endsWith(path.join('src', 'file.ts')))
     })
 
-    test('#2 D file → full absolute path copied', async () => {
+    test('D file → full absolute path copied', async () => {
       // sub/deep.ts exists on main — deleting it on the feature branch shows as D
       repo.git('rm sub/deep.ts')
       provider.schedule()
@@ -70,7 +70,7 @@ suite('§3.3 File Action Commands', () => {
   })
 
   suite('taskChanges.copyRelativePath', () => {
-    test('#3 M file at repo root → filename only', async () => {
+    test('M file at repo root → filename only', async () => {
       // root.ts was committed to main in suiteSetup — modifying it shows as M
       repo.write('root.ts', 'modified\n')
       provider.schedule()
@@ -85,7 +85,7 @@ suite('§3.3 File Action Commands', () => {
       assert.strictEqual(text, 'root.ts')
     })
 
-    test('#4 M file in subdirectory → relative path from repo root', async () => {
+    test('M file in subdirectory → relative path from repo root', async () => {
       repo.write('src/file.ts', 'modified again\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'M'), 5_000)
@@ -98,7 +98,7 @@ suite('§3.3 File Action Commands', () => {
   })
 
   suite('taskChanges.copyPatch', () => {
-    test('#10 U (untracked) file → info notification, clipboard unchanged', async () => {
+    test('U (untracked) file → info notification, clipboard unchanged', async () => {
       repo.write('untracked.ts', 'untracked\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'U'), 5_000)
@@ -114,7 +114,7 @@ suite('§3.3 File Action Commands', () => {
       assert.strictEqual(clip, 'ORIGINAL')
     })
 
-    test('#6 M file, Branch base → clipboard contains diff output', async () => {
+    test('M file, Branch base → clipboard contains diff output', async () => {
       repo.write('src/file.ts', 'modified for patch\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'M'), 5_000)
@@ -126,7 +126,7 @@ suite('§3.3 File Action Commands', () => {
       assert.ok(text.includes('diff --git'))
     })
 
-    test('#12 File reverted to match base → "No changes to copy" notification', async () => {
+    test('File reverted to match base → "No changes to copy" notification', async () => {
       // Ensure file matches base (no changes)
       repo.write('src/file.ts', 'export const a = 1\n')
       provider.schedule()
@@ -143,7 +143,7 @@ suite('§3.3 File Action Commands', () => {
   })
 
   suite('taskChanges.openFile', () => {
-    test('#24 Resource URI with #gitbase fragment → fragment stripped before open', async () => {
+    test('Resource URI with #gitbase fragment → fragment stripped before open', async () => {
       repo.write('src/file.ts', 'fragment test\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'M'), 5_000)
@@ -161,14 +161,14 @@ suite('§3.3 File Action Commands', () => {
   })
 
   suite('taskChanges.refresh', () => {
-    test('#27 Refresh with SourceControl argument → refreshes without showing picker', async () => {
+    test('Refresh with SourceControl argument → refreshes without showing picker', async () => {
       // When invoked from the scm/title menu, VS Code passes the SourceControl object.
       // resolveProvider() finds it directly — no QuickPick, no matter how many repos are open.
       await vscode.commands.executeCommand('taskChanges.refresh', provider.scm)
       assert.ok(true, 'Command completed without error')
     })
 
-    test('#29 Command palette with no selection → silent no-op', async () => {
+    test('Command palette with no selection → silent no-op', async () => {
       // When invoked from the command palette with multiple repos open, resolveProvider()
       // shows a QuickPick.  Simulating user cancellation (no selection) must not crash.
       const origQP = vscode.window.showQuickPick
@@ -183,7 +183,7 @@ suite('§3.3 File Action Commands', () => {
   })
 
   suite('openWithoutAutoReveal', () => {
-    test('#32 scm.autoReveal setting is not modified', async () => {
+    test('scm.autoReveal setting is not modified', async () => {
       repo.write('untracked2.ts', 'untracked2\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'U'), 5_000)

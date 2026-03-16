@@ -8,7 +8,7 @@ import {
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
-suite('§3.2 Resource State Accuracy', () => {
+suite('Resource State Accuracy', () => {
   let provider: TaskChangesProvider
   let repo: ReturnType<typeof makeRepo>
 
@@ -58,7 +58,7 @@ suite('§3.2 Resource State Accuracy', () => {
   })
 
   suite('Status codes', () => {
-    test('#1 Modified tracked file → contextValue M', async () => {
+    test('Modified tracked file → contextValue M', async () => {
       repo.write('base.ts', 'export const x = 2\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'M'), 5_000)
@@ -67,7 +67,7 @@ suite('§3.2 Resource State Accuracy', () => {
       assert.ok(state, 'Expected M entry')
     })
 
-    test('#2 Staged new file → contextValue A', async () => {
+    test('Staged new file → contextValue A', async () => {
       repo.write('new-staged.ts', 'export const y = 1\n')
       repo.git('add new-staged.ts')
       provider.schedule()
@@ -77,7 +77,7 @@ suite('§3.2 Resource State Accuracy', () => {
       assert.ok(state, 'Expected A entry')
     })
 
-    test('#3 Deleted file (git rm) → contextValue D', async () => {
+    test('Deleted file (git rm) → contextValue D', async () => {
       repo.git('rm base.ts')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'D'), 5_000)
@@ -86,7 +86,7 @@ suite('§3.2 Resource State Accuracy', () => {
       assert.ok(state, 'Expected D entry')
     })
 
-    test('#4 Renamed file (git mv) → contextValue R', async () => {
+    test('Renamed file (git mv) → contextValue R', async () => {
       repo.git('mv base.ts renamed.ts')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'R'), 5_000)
@@ -95,7 +95,7 @@ suite('§3.2 Resource State Accuracy', () => {
       assert.ok(state, 'Expected R entry')
     })
 
-    test('#5 Untracked file → contextValue U', async () => {
+    test('Untracked file → contextValue U', async () => {
       repo.write('untracked.ts', 'untracked\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'U'), 5_000)
@@ -106,7 +106,7 @@ suite('§3.2 Resource State Accuracy', () => {
   })
 
   suite('Diff ref correctness', () => {
-    test('#7 Branch base → lastDiffRef is merge-base SHA', async () => {
+    test('Branch base → lastDiffRef is merge-base SHA', async () => {
       provider.schedule()
       await waitForRefresh(provider, 3_000)
 
@@ -115,7 +115,7 @@ suite('§3.2 Resource State Accuracy', () => {
       assert.ok(diffRef, 'lastDiffRef should be set')
     })
 
-    test('#10 HEAD base → lastDiffRef is HEAD', async () => {
+    test('HEAD base → lastDiffRef is HEAD', async () => {
       // Temporarily switch to HEAD base
       setProviderBase(provider, 'HEAD', undefined)
       provider.schedule()
@@ -133,14 +133,14 @@ suite('§3.2 Resource State Accuracy', () => {
   })
 
   suite('Untracked files', () => {
-    test('#14 Untracked file appears in list with status U', async () => {
+    test('Untracked file appears in list with status U', async () => {
       repo.write('newfile.ts', 'const a = 1\n')
       provider.schedule()
       await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'U'), 5_000)
       assert.ok(provider.group.resourceStates.some(r => r.contextValue === 'U'))
     })
 
-    test('#16 Gitignored file absent from list', async () => {
+    test('Gitignored file absent from list', async () => {
       repo.write('.gitignore', '*.ignored\n')
       repo.git('add .gitignore')
       repo.git('commit -m "add gitignore"')
@@ -158,13 +158,13 @@ suite('§3.2 Resource State Accuracy', () => {
   })
 
   suite('Group visibility', () => {
-    test('#17 No changed files → group still visible (hideWhenEmpty = false)', async () => {
+    test('No changed files → group still visible (hideWhenEmpty = false)', async () => {
       provider.schedule()
       await waitForRefresh(provider, 3_000)
       assert.strictEqual(provider.group.hideWhenEmpty, false)
     })
 
-    test('#18 Unchanged file not in resourceStates', async () => {
+    test('Unchanged file not in resourceStates', async () => {
       provider.schedule()
       await waitForRefresh(provider, 3_000)
 

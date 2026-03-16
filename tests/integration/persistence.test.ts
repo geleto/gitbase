@@ -8,7 +8,7 @@ import {
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
-suite('§3.5 Base Persistence & Recovery', () => {
+suite('Base Persistence & Recovery', () => {
 
   suiteSetup(async () => {
     await ensureExtensionActive()
@@ -34,7 +34,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
       removeRepo(repo)
     })
 
-    test('#1 Select Branch base → stored in workspaceState', async () => {
+    test('Select Branch base → stored in workspaceState', async () => {
       setProviderBase(provider, 'main', 'Branch')
       await (provider as any).ctx.workspaceState.update(`taskChanges.base.${repo.root}`,      'main')
       await (provider as any).ctx.workspaceState.update(`taskChanges.baseType.${repo.root}`,  'Branch')
@@ -43,18 +43,18 @@ suite('§3.5 Base Persistence & Recovery', () => {
       assert.strictEqual(stored, 'main')
     })
 
-    test('#4 Label stored separately from ref', async () => {
+    test('Label stored separately from ref', async () => {
       await (provider as any).ctx.workspaceState.update(`taskChanges.baseLabel.${repo.root}`, 'main')
       const label = (provider as any).ctx.workspaceState.get(`taskChanges.baseLabel.${repo.root}`)
       assert.strictEqual(label, 'main')
     })
 
-    test('#5 Type stored separately', async () => {
+    test('Type stored separately', async () => {
       const type = (provider as any).ctx.workspaceState.get(`taskChanges.baseType.${repo.root}`)
       assert.strictEqual(type, 'Branch')
     })
 
-    test('#7 Two repos: keys namespaced by root', async () => {
+    test('Two repos: keys namespaced by root', async () => {
       const repoB = makeRepo('gitbase-persist-b-')
       repoB.write('b.ts', 'b\n')
       repoB.git('add .')
@@ -78,7 +78,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
   })
 
   suite('Auto-detection on first open', () => {
-    test('#18 No remotes at all → detectDefaultBranch returns null, label stays HEAD', async () => {
+    test('No remotes at all → detectDefaultBranch returns null, label stays HEAD', async () => {
       const repo = makeRepo('gitbase-noremote-')
       repo.write('a.ts', 'a\n')
       repo.git('add .')
@@ -103,7 +103,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
   })
 
   suite('Deleted-ref detection and recovery', () => {
-    test('#8 Delete base branch → validation fails, base cleared to HEAD', async () => {
+    test('Delete base branch → validation fails, base cleared to HEAD', async () => {
       const repo = makeRepo('gitbase-recovery-')
       repo.write('f.ts', 'x\n')
       repo.git('add .')
@@ -147,7 +147,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
       removeRepo(repo)
     })
 
-    test('#13 After recovery: provideOriginalResource returns undefined', async () => {
+    test('After recovery: provideOriginalResource returns undefined', async () => {
       const repo = makeRepo('gitbase-provafter-')
       repo.write('f.ts', 'x\n')
       repo.git('add .')
@@ -168,7 +168,7 @@ suite('§3.5 Base Persistence & Recovery', () => {
   })
 
   suite('Auto-detection done flag', () => {
-    test('#20 User manually selects base → autoDetectDone set to true', async () => {
+    test('User manually selects base → autoDetectDone set to true', async () => {
       const repo = makeRepo('gitbase-autodet-')
       repo.write('a.ts', 'a\n')
       repo.git('add .')

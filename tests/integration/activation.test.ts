@@ -6,7 +6,7 @@ import {
   waitForProvider, waitForProviderCount, ensureExtensionActive, sleep,
 } from '../helpers/gitFixture'
 
-suite('§3.1 Extension Activation & Provider Lifecycle', () => {
+suite('Extension Activation & Provider Lifecycle', () => {
 
   suiteSetup(async () => {
     await ensureExtensionActive()
@@ -15,18 +15,18 @@ suite('§3.1 Extension Activation & Provider Lifecycle', () => {
   })
 
   suite('Activation with a git repo', () => {
-    test('#1 Extension activates → at least one provider', () => {
+    test('Extension activates → at least one provider', () => {
       assert.ok(providers.size >= 1, `Expected providers.size >= 1, got ${providers.size}`)
     })
 
-    test('#2 GitBase Changes SCM panel registered', () => {
+    test('GitBase Changes SCM panel registered', () => {
       // Check that at least one TaskChangesProvider's SCM has our id
       const p = [...providers.values()][0]
       assert.ok(p, 'No provider found')
       assert.strictEqual(p.scm.id, 'taskchanges')
     })
 
-    test('#4 Unborn repo (zero commits) → panel appears, no error notification', async () => {
+    test('Unborn repo (zero commits) → panel appears, no error notification', async () => {
       const repo = makeRepo('gitbase-unborn-')
       // Remove the initial commit to make it unborn
       const unbornDir = require('fs').mkdtempSync(
@@ -51,7 +51,7 @@ suite('§3.1 Extension Activation & Provider Lifecycle', () => {
   })
 
   suite('Repository discovery', () => {
-    test('#6 onDidOpenRepository fires for late-opened repo → second provider created', async () => {
+    test('onDidOpenRepository fires for late-opened repo → second provider created', async () => {
       const repo = makeRepo('gitbase-late-')
       const countBefore = providers.size
       await addWorkspaceFolder(repo.root)
@@ -65,7 +65,7 @@ suite('§3.1 Extension Activation & Provider Lifecycle', () => {
       }
     })
 
-    test('#7 onDidCloseRepository fires for removed repo → provider disposed', async () => {
+    test('onDidCloseRepository fires for removed repo → provider disposed', async () => {
       const repo = makeRepo('gitbase-close-')
       await addWorkspaceFolder(repo.root)
       await waitForProvider(repo.root, 10_000)
@@ -78,7 +78,7 @@ suite('§3.1 Extension Activation & Provider Lifecycle', () => {
       removeRepo(repo)
     })
 
-    test('#8 Provider disposed on remove: providers.has(root) is false', async () => {
+    test('Provider disposed on remove: providers.has(root) is false', async () => {
       const repo = makeRepo('gitbase-dispose-')
       await addWorkspaceFolder(repo.root)
       await waitForProvider(repo.root, 10_000)
@@ -88,7 +88,7 @@ suite('§3.1 Extension Activation & Provider Lifecycle', () => {
       removeRepo(repo)
     })
 
-    test('#9 Adding same root twice is a no-op', async () => {
+    test('Adding same root twice is a no-op', async () => {
       const repo = makeRepo('gitbase-dup-')
       await addWorkspaceFolder(repo.root)
       await waitForProvider(repo.root, 10_000)

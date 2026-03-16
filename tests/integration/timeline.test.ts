@@ -8,7 +8,7 @@ import {
   waitForProvider, ensureExtensionActive, sleep,
 } from '../helpers/gitFixture'
 
-suite('§3.10 Timeline Provider', () => {
+suite('Timeline Provider', () => {
   let repo: ReturnType<typeof makeRepo>
 
   suiteSetup(async () => {
@@ -45,7 +45,7 @@ suite('§3.10 Timeline Provider', () => {
     } as any
   }
 
-  test('#1 File with 3 commits → returns 3 TimelineItem entries', async () => {
+  test('File with 3 commits → returns 3 TimelineItem entries', async () => {
     assert.ok(timelineProvider, 'timelineProvider should be exported')
 
     const uri     = vscode.Uri.file(path.join(repo.root, 'file.ts'))
@@ -55,7 +55,7 @@ suite('§3.10 Timeline Provider', () => {
     assert.ok(result.items.length >= 3, `Expected >= 3 items, got ${result.items.length}`)
   })
 
-  test('#2 Item label equals commit subject', async () => {
+  test('Item label equals commit subject', async () => {
     const uri    = vscode.Uri.file(path.join(repo.root, 'file.ts'))
     const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
 
@@ -63,7 +63,7 @@ suite('§3.10 Timeline Provider', () => {
     assert.ok(item, 'Expected item with label "commit 3"')
   })
 
-  test('#3 Item description equals author name', async () => {
+  test('Item description equals author name', async () => {
     const uri    = vscode.Uri.file(path.join(repo.root, 'file.ts'))
     const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
 
@@ -72,7 +72,7 @@ suite('§3.10 Timeline Provider', () => {
     assert.strictEqual(item.description, 'GitBase Test', 'description should be the commit author name')
   })
 
-  test('#4 Item timestamp equals commit date × 1000', async () => {
+  test('Item timestamp equals commit date × 1000', async () => {
     const uri    = vscode.Uri.file(path.join(repo.root, 'file.ts'))
     const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
 
@@ -83,7 +83,7 @@ suite('§3.10 Timeline Provider', () => {
     }
   })
 
-  test('#5 Item iconPath is ThemeIcon with id git-commit', async () => {
+  test('Item iconPath is ThemeIcon with id git-commit', async () => {
     const uri    = vscode.Uri.file(path.join(repo.root, 'file.ts'))
     const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
 
@@ -93,7 +93,7 @@ suite('§3.10 Timeline Provider', () => {
     assert.strictEqual(icon.id, 'git-commit')
   })
 
-  test('#6 Item command opens diff (vscode.diff)', async () => {
+  test('Item command opens diff (vscode.diff)', async () => {
     const uri    = vscode.Uri.file(path.join(repo.root, 'file.ts'))
     const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
 
@@ -104,7 +104,7 @@ suite('§3.10 Timeline Provider', () => {
     assert.ok(Array.isArray(cmd!.arguments) && cmd!.arguments.length >= 2)
   })
 
-  test('#7 Oldest commit: left side is EMPTY_URI', async () => {
+  test('Oldest commit: left side is EMPTY_URI', async () => {
     const uri    = vscode.Uri.file(path.join(repo.root, 'file.ts'))
     const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
 
@@ -115,7 +115,7 @@ suite('§3.10 Timeline Provider', () => {
       'oldest commit left side should be EMPTY_URI')
   })
 
-  test('#8 Item tooltip contains hash and subject', async () => {
+  test('Item tooltip contains hash and subject', async () => {
     const uri    = vscode.Uri.file(path.join(repo.root, 'file.ts'))
     const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
 
@@ -150,7 +150,7 @@ suite('§3.10 Timeline Provider', () => {
       removeRepo(paginatedRepo)
     })
 
-    test('#9 51 commits → first call returns 50 items with cursor', async () => {
+    test('51 commits → first call returns 50 items with cursor', async () => {
       const uri    = vscode.Uri.file(path.join(paginatedRepo.root, 'pg.ts'))
       const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
 
@@ -158,7 +158,7 @@ suite('§3.10 Timeline Provider', () => {
       assert.ok(result.paging?.cursor, 'Should have pagination cursor')
     })
 
-    test('#10 50 commits exactly → returns 50 items, no paging', async () => {
+    test('50 commits exactly → returns 50 items, no paging', async () => {
       // We have 52 commits total (0..51); with limit=52 we should get all and no paging
       const uri    = vscode.Uri.file(path.join(paginatedRepo.root, 'pg.ts'))
       const result = await timelineProvider!.provideTimeline(uri, { limit: 52 }, makeToken())
@@ -167,7 +167,7 @@ suite('§3.10 Timeline Provider', () => {
       assert.ok(result.items.length <= 52)
     })
 
-    test('#12 Second page from cursor → items older than cursor commit', async () => {
+    test('Second page from cursor → items older than cursor commit', async () => {
       const uri   = vscode.Uri.file(path.join(paginatedRepo.root, 'pg.ts'))
       const page1 = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
       const cursor = page1.paging!.cursor!
@@ -182,26 +182,26 @@ suite('§3.10 Timeline Provider', () => {
   })
 
   suite('Edge cases', () => {
-    test('#15 File not in any repo → returns empty items', async () => {
+    test('File not in any repo → returns empty items', async () => {
       const uri    = vscode.Uri.file('/some/other/path/file.ts')
       const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
       assert.deepStrictEqual(result.items, [])
     })
 
-    test('#16 Non-file URI scheme → returns empty items', async () => {
+    test('Non-file URI scheme → returns empty items', async () => {
       const uri    = vscode.Uri.parse('untitled:/some/file.ts')
       const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
       assert.deepStrictEqual(result.items, [])
     })
 
-    test('#17 File with no commits (new untracked file) → empty items, no crash', async () => {
+    test('File with no commits (new untracked file) → empty items, no crash', async () => {
       repo.write('new-untracked.ts', 'untracked\n')
       const uri    = vscode.Uri.file(path.join(repo.root, 'new-untracked.ts'))
       const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken())
       assert.deepStrictEqual(result.items, [])
     })
 
-    test('#19 Cancellation token fired → returns empty items', async () => {
+    test('Cancellation token fired → returns empty items', async () => {
       const uri    = vscode.Uri.file(path.join(repo.root, 'file.ts'))
       const result = await timelineProvider!.provideTimeline(uri, { limit: 50 }, makeToken(true))
       assert.deepStrictEqual(result.items, [])
@@ -209,7 +209,7 @@ suite('§3.10 Timeline Provider', () => {
   })
 
   suite('onDidChange refresh', () => {
-    test('#20 fireChanged() fires onDidChange with undefined', () => {
+    test('fireChanged() fires onDidChange with undefined', () => {
       assert.ok(timelineProvider, 'timelineProvider should exist')
       let received: vscode.TimelineChangeEvent | undefined = null as any
 

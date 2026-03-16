@@ -7,7 +7,7 @@ import {
 } from '../helpers/gitFixture'
 import { TaskChangesProvider } from '../../src/provider'
 
-suite('§3.7 Context Key (Explorer/Editor Menus)', () => {
+suite('Context Key (Explorer/Editor Menus)', () => {
   let provider: TaskChangesProvider
   let repo: ReturnType<typeof makeRepo>
 
@@ -35,7 +35,7 @@ suite('§3.7 Context Key (Explorer/Editor Menus)', () => {
     removeRepo(repo)
   })
 
-  test('#1 Active editor is an M file → context key true', async () => {
+  test('Active editor is an M file → context key true', async () => {
     repo.write('tracked.ts', 'modified\n')
     provider.schedule()
     await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'M'), 5_000)
@@ -50,7 +50,7 @@ suite('§3.7 Context Key (Explorer/Editor Menus)', () => {
     assert.ok(state !== undefined, 'M file should be in resource states')
   })
 
-  test('#3 Active editor is a file NOT in GitBase list → getResourceState undefined', async () => {
+  test('Active editor is a file NOT in GitBase list → getResourceState undefined', async () => {
     // Close all editors then open other.ts (not changed)
     await vscode.commands.executeCommand('workbench.action.closeAllEditors')
     const fileUri = vscode.Uri.file(path.join(repo.root, 'other.ts'))
@@ -61,7 +61,7 @@ suite('§3.7 Context Key (Explorer/Editor Menus)', () => {
     assert.strictEqual(state, undefined, 'unchanged file should not be in resource states')
   })
 
-  test('#4 Active editor is a basegit: URI → context key false (scheme check)', async () => {
+  test('Active editor is a basegit: URI → context key false (scheme check)', async () => {
     // The extension checks uri.scheme === 'file'
     // basegit: URIs should result in isChanged = false
     const basegitUri = vscode.Uri.parse('basegit:/some/file.ts')
@@ -70,7 +70,7 @@ suite('§3.7 Context Key (Explorer/Editor Menus)', () => {
     assert.strictEqual(isFile, false, 'basegit scheme should not be treated as a file')
   })
 
-  test('#5 No active editor → context key false', async () => {
+  test('No active editor → context key false', async () => {
     await vscode.commands.executeCommand('workbench.action.closeAllEditors')
     await sleep(400)
     // With no editor, `editor?.document.uri` is undefined, so isChanged = false
@@ -78,7 +78,7 @@ suite('§3.7 Context Key (Explorer/Editor Menus)', () => {
     assert.strictEqual(vscode.window.activeTextEditor, undefined)
   })
 
-  test('#6 Resource states change: file removed from list → key updates', async () => {
+  test('Resource states change: file removed from list → key updates', async () => {
     // Revert the modification to tracked.ts
     repo.write('tracked.ts', 'tracked\n')
     provider.schedule()
@@ -92,7 +92,7 @@ suite('§3.7 Context Key (Explorer/Editor Menus)', () => {
     assert.strictEqual(state, undefined, 'reverted file should be removed from resource states')
   })
 
-  test('#7 Resource states change: file added to list → key updates', async () => {
+  test('Resource states change: file added to list → key updates', async () => {
     repo.write('tracked.ts', 'changed again\n')
     provider.schedule()
     await waitForResourceStates(provider, s => s.some(r => r.contextValue === 'M'), 5_000)
